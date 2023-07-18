@@ -13,7 +13,7 @@
 #include "mgard/compress.hpp"
 
 
-std::string filename = "/home2/aoyagir/isotropic1024coarse/pressure2_hdf5/output_test.h5";
+std::string filename = "/scratch/aoyagir/step1_500_test.h5";
 
 /*
 g++ compress_hdf5.cpp -I/usr/include/hdf5/serial -L/usr/lib/x86_64-linux-gnu/hdf5/serial/ -lhdf5 -lzstd -lmgard -lprotobuf
@@ -53,20 +53,32 @@ int main() {
     long long unsigned int start_2 = 0;
     long long unsigned int start_3 = 0;
     long long unsigned int start_4 = 0;
-    long long unsigned int start_5 = 0;
 
-    long long unsigned int offset_1 = 1;
-    long long unsigned int offset_2 = 1024;
-    long long unsigned int offset_3 = 1024;
-    long long unsigned int offset_4 = 1024;
-    long long unsigned int offset_5 = 1;
+    long long unsigned int n1 = 1;
+    long long unsigned int n2 = 512;
+    long long unsigned int n3 = 512;
+    long long unsigned int n4 = 128;
 
-    long long int NumElements = offset_1*offset_2*offset_3*offset_4;
+    long long int NumElements = n1*n2*n3*n4;
+    std::vector<float> sim_data(NumElements);
 
-    std::vector<float> result2(NumElements);
+            // For measuring compression time
+    auto start = std::chrono::high_resolution_clock::now();
 
-    dataset.select({start_1,start_2,start_3,start_4,start_5},
-                    {offset_1, offset_2, offset_3, offset_4, offset_5}).read(result2.data());
+    dataset.select({start_1,start_2,start_3,start_4},
+                    {n1, n2, n3, n4}).read(sim_data.data());
+
+    // Stop measuring time
+    auto end = std::chrono::high_resolution_clock::now();
+
+    // Calculate the duration in milliseconds
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+
+    // // Print the execution time
+    std::cout << "time_to_load " << n1 << " " 
+    << n2 << " " << n3 << " " << n4 << " "
+    << duration << " milliseconds" << std::endl;
+
 
     // We wrap the information about the mesh into an `mgard::TensorMeshHierarchy`
     // object. The first template parameter is the dimension. The second is the
@@ -75,8 +87,8 @@ int main() {
     // `[0, 1]^{d}` will be used.
 
     std::cout << "creating mesh hierarchy ...";
-    const mgard::TensorMeshHierarchy<5, float> hierarchy({1,100,100,100,1});
-    std::cout << " done" << std::endl;
+    const mgard::TensorMeshHierarchy<4, float> hierarchy({n1,n2,n3,n4});
+    std::cout << " done" << std::endl << std::endl;
 
     // Now we set the compression parameters. First we select the norm in which to
     // control the compression error. We choose from the family of supported norms
@@ -92,11 +104,13 @@ int main() {
     // Start measuring time
 
     for(int i = 0 ; i < 20 ; i++){
+
+        // For measuring compression time
         auto start = std::chrono::high_resolution_clock::now();
 
         // Call the mgard::compress function
-        const mgard::CompressedDataset<5, float> compressed =
-            mgard::compress(hierarchy, result2.data(), s, tolerance);
+        const mgard::CompressedDataset<4, float> compressed =
+            mgard::compress(hierarchy, sim_data.data(), s, tolerance);
 
         // Stop measuring time
         auto end = std::chrono::high_resolution_clock::now();
@@ -110,19 +124,25 @@ int main() {
         // Print the error tolerace
         std::cout << "Error tolerance:" << tolerance << std::endl;
 
+        float original_data = (double)NumElements*sizeof(float)/1024/1024/1024;
+
+        std::cout << "original data:" << original_data << "Gbytes" << std::endl;
         // `compressed` contains the compressed data buffer. We can query its size in
         // bytes with the `size` member function.
         std::cout << "compression ratio: "
-                    << static_cast<float>(NumElements * sizeof(result2.data())) / compressed.size()
+                    << original_data*1024*1024*1024 / compressed.size()
                     << std::endl 
-                    << NumElements * sizeof(result2.data())
+                    << original_data*1024*1024*1024
                     << " bytes -> " 
                     << compressed.size()
                     << " bytes"
                     <<  std::endl 
                     << "ThroughPut:"
-                    << (float)NumElements * sizeof(result2.data())/ duration*1000/1024.0/1024.0/1024.0
+                    << original_data / (duration*1000)
                     << " (GByte/sec)"
+                    << "=" 
+                    << original_data / (duration*1000) * 1024
+                    << " MB/sec"
                     << std::endl << std::endl;
 
         tolerance *= 10;
