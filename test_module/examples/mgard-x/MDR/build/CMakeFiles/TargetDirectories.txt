@@ -1,0 +1,4 @@
+/tmp/MGARD/examples/mgard-x/MDR/build/CMakeFiles/refactor.dir
+/tmp/MGARD/examples/mgard-x/MDR/build/CMakeFiles/reconstructor.dir
+/tmp/MGARD/examples/mgard-x/MDR/build/CMakeFiles/edit_cache.dir
+/tmp/MGARD/examples/mgard-x/MDR/build/CMakeFiles/rebuild_cache.dir
