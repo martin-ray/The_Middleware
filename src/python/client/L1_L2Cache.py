@@ -14,12 +14,14 @@ class dynamic_cache:
 class LRU_cache:
     def __init__(self, capacity,offsetSize=100): # offsetSize知る必要ある？
         self.capacity = capacity
-        self.current_size = 0
+        self.used_size = 0
+        self.usedSizeInMB = 0
         self.SizeOfFloat = 4
         self.offsetSize = offsetSize
         self.BlockX = offsetSize
         self.BlockY = offsetSize
         self.BlockZ = offsetSize
+        self.OneBlockSize = offsetSize**3*4/1024/1024
         self.capacityInMB = offsetSize**3*4*capacity/1024/1024
         self.blocksize = self.SizeOfFloat*self.BlockX*self.BlockY*self.BlockZ
         self.cache = {}  # Dictionary to store cached items
@@ -44,18 +46,25 @@ class LRU_cache:
             # Evict the least recently used item
             oldest_key = self.order.pop(0)
             self.cache.pop(oldest_key)
-            self.current_size = cache_capacity
+            self.used_size = cache_capacity
             maxCapacityFlag = True
         self.cache[key] = value
         self.order.append(key)
         if not maxCapacityFlag:
-            self.current_size = self.current_size + 1
+            self.used_size = self.used_size + 1
+            self.usedSizeInMB
+
+    def printInitInfo(self):
+        print("############ cache initial info ###########")
+        print("capacity = {}\nblockOffset = {}\n,capacityInMb = {}".format(self.capacity,self.offsetSize,self.capacity))
 
     def printInfo(self):
         print("############ cache info ###########")
-        print("capacity = {}\nblockOffset = {}\n,capacityInMb = {}".format(self.capacity,self.offsetSize,self.capacity))
+        print("used_size/capacity = {}/{}\nusedSizeInMB/capacityInMb = {}/{}".format(
+            self.usedSize,self.capacity,
+            self.usedSizeInMB,self.capacityInMB)
+            )
 
-        
 # Example usage and test
 if __name__ == "__main__":
     cache_capacity = 10
@@ -70,7 +79,7 @@ if __name__ == "__main__":
     data = np.random.random_sample((100, 100, 100))
     lru_cache.put(key1,data)
     print(lru_cache.get("key2"))  # Output: "value2"
-    print(lru_cache.current_size)
+    print(lru_cache.used_size)
 
     
     lru_cache.put("key4", "value4")  # This will evict "key1" as it's the least recently used
@@ -79,7 +88,7 @@ if __name__ == "__main__":
     print(lru_cache.get(key1))
     print(lru_cache.get(key2))
     print(lru_cache.get(key3))
-    print(lru_cache.current_size)
+    print(lru_cache.used_size)
 
     if lru_cache.get("key5") == None:
         print("go get to next level cache")
