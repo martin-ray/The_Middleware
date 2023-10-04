@@ -4,6 +4,7 @@ from NetInterface import NetIF
 from Prefetcher import L2Prefetcher
 from L1_L2Cache import LRU_cache
 from recomposer import Recomposer
+import threading
 
 
 class UI:
@@ -38,32 +39,42 @@ class UI:
         # recomposer
         self.recomposer = Recomposer()
 
+        # 一番最初に初期データを持ってきて、ループを開始する
+
         # この辺で、ループをスタートする。
         start_loop()
     
+    def L2MissHandler(self,blockId,BlockAndData):
+        compressed = self.netIF.send_req_urgent(blockId)
+        original = self.decompressor(compressed)
+        BlockAndData[blockId] = original
 
-
-    def getBlocks(self,tol,timestep,x,y,z,xOffset,yOffset,zOffset):
-        # まずは、x,y,z,offsetsから、self.blockOffsetに合うように、ブロックを作らないといけないのよ。
-        
-        BlockIds = self.Block2BlockIds(tol,timestep,x,y,z,xOffset,yOffset,zOffset)
+    def getBlocks(self, tol, timestep, x, y, z, xOffset, yOffset, zOffset):
+        BlockIds = self.Block2BlockIds(tol, timestep, x, y, z, xOffset, yOffset, zOffset)
         BlockAndData = {}
+        threads = []
 
         for blockId in BlockIds:
             L1data = self.L1Cache.get(blockId)
             if L1data == None:
                 L2data = self.L2Cache.get(blockId)
                 if L2data == None:
-                    # urget fetch using NetIF directly
-                    compressed = self.netIF.send_req_urgent(blockId)
-                    original = self.decompressor(compressed)
-                    BlockAndData[blockId] = original
-                else :
+                    # Urgent fetch using NetIF directly
+                    thread = threading.Thread(target=self.L2MissHandler, args=(blockId, BlockAndData))
+                    thread.start()
+                    threads.append(thread)
+                else:
                     original = self.decompressor(L2data)
                     BlockAndData[blockId] = original
-                    
-                
+
+        # Wait for all threads to finish
+        for thread in threads:
+            thread.join()
         
+        # key,value = blockId,OriginalData -> recomposed data.
+        recompsedArray = self.recomposer.recompose(BlockAndData)
+        return recompsedArray
+    
 
     def Block2BlockIds(self,tol,timestep,x,y,z,xOffset,yOffset,zOffset):
         xStartIdx = x//self.blockOffset*self.blockOffset
@@ -92,26 +103,6 @@ class UI:
 
         return BlockIds
     
-#### L1プリふぇっちゃかな。
-#### L2プリふぇっちゃも保持してないとだめだね。緊急ジョブが入ってきたときにL2から直接decompressorインスタンスに渡すこともあるので
-#### L2キャッシュも持ってないとだめな気がしてきた。L1キャッシュでノンヒットだったときは、L2キャッシュを見に行って、そこでヒットしたら
-#### すぐにdecompressを始めないといけないからね。ー－＞いや、L2はdecompressorインスタンスを持っている必要はないです。
-#### L1が、L2を見に行ってなかったらもう直接取りに行きます。ということにしていい？なぜかというと、L1を見て、L2を見て、って
-#### 担当者が多岐にわたると、誰が担当だったか忘れてしまうから。
-#### decompressorで処理するためのデータ用のキューも用意する必要ある感じかな？あるねー－－。この辺、goだったらチャネルを使って
-#### 簡単に実現できるんだけど。
-
-## ユーザが指定したtol,timestep,x,y,z, offset*3を使って、データを再構築する役割を担うのが、recomposerだね。
-### こいつは、L1キャッシュを保持している。
-### ユーザが指定したtol,timestep,x,y,z, offset*3 --> set of (tol,timestep,x,y,z)を作る。おそらくtolとtimestepは
-### 一定だから、(x,y,z)のセットを作ればいい。で、キャッシュにアクセスして、キャッシュに入っているやつはsetから捨てる。
-### 入ってないやつは、誰からもらうんだ？　
-
-## プリふぇっちゃーは二つあるってはなし。一つは、ネットワーク側のプリふぇっちゃL2プリふぇっちゃね。
-### こいつは単独で自分のスレッドで動いている。
-### が、L2キャッシュから、もってこーい、って指示を受けることもある。
-### それは、L1キャッシュでもL2キャッシュでもヒットしなかった時だよね
-### L2キャッシュでヒットしたら、L2Cacheがdecompressして、それを誰に返すんだ？循環参照が起こりすぎて辛い。。
 ### L2とL1はそのうち3 wayとかにするのもマジで面白そうだけどね。
 
 ## もう一つは、L1とL2の間にいるプリふぇっちゃ。こいつは、decompressorに指示を出す権限を持っている。
