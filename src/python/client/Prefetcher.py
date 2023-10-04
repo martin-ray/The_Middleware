@@ -7,11 +7,12 @@ from collections import deque
 
 from L1_L2Cache import LRU_cache
 from L1_L2Cache import dynamic_cache
-
+from NetInterface import NetIF
 
 class L2Prefetcher:
-    def __init__(self,L2Cache,serverURL="http://localhost:8080") -> None:
+    def __init__(self,L2Cache,NetIF,serverURL="http://localhost:8080") -> None:
         self.URL = serverURL
+
         # これ何のためだっけ？
         self.Tols = []
         self.maxTimestep = 1024
@@ -22,6 +23,8 @@ class L2Prefetcher:
         self.L2Cache = L2Cache
         self.prefetchedSet = s = set()
         self.fetch_q = deque() # blocks going to get
+
+        self.Netif = NetIF
 
     def first_contact(self):
         # 初期コンタクトでそれぞれの次元の大きさを決める。
@@ -73,39 +76,33 @@ class L2Prefetcher:
         y = block[3]
         z = block[4]
 
-        # ここで、L2キャッシュの容量が満杯だったら、リクエストを一回辞められるようにしたいのよね。つまり非同期に処理したいって感じです。
-        params = {
-            'time': timestep,
-            'x': x,
-            'y': y,
-            'z': z,
-            'tol':tol
-        }
-
         blockId = (tol,timestep,x,y,z)
 
-        # ここでブロッキングが発生するのはすごく残念ですね。仕方ないのかな。
-        response = requests.get(self.URL, params=params)
+        # ここでブロッキングが発生するのはすごく残念ですね。仕方ないのかな。いや、ブロッキングを発生させないために、
+        # ネットワークコンポーネントも一つのスレッドで動かすことにしました。
+        # response = requests.get(self.URL, params=params)
 
-        if response.status_code == 200:
-            print("Request successful")
-            response_content = response.content
-            numpy_array = np.frombuffer(response_content, dtype=np.uint8)
+        # if response.status_code == 200:
+        #     print("Request successful")
+        #     response_content = response.content
+        #     numpy_array = np.frombuffer(response_content, dtype=np.uint8)
 
-            # put to L2 cache by put(key,value) method
-            self.L2Cache.put(blockId,numpy_array)
+        #     # put to L2 cache by put(key,value) method
+        #     self.L2Cache.put(blockId,numpy_array)
             
-            # register the prefetched block to prefetcheSet set.
-            self.prefetchedSet(blockId) # Do not forget to abondon it from set when move to L1 cache
+        #     # register the prefetched block to prefetcheSet set.
+        #     self.prefetchedSet(blockId) # Do not forget to abondon it from set when move to L1 cache
 
-            # enque neighbour blocks of input block
-            self.enque_neighbor_blocks(blockId)
+        #     # enque neighbour blocks of input block
+        #     self.enque_neighbor_blocks(blockId)
 
-            return
+        #     return
         
-        else:
-            print("Request failed")
-            return None
+        # else:
+        #     print("Request failed")
+        #     return None
+        # NetifのsendQに送るブロックを追加。もしかしたらここら辺冗長化されているかもしれないから、後でリファクタリングして。
+        self.Netif.send_req(blockId)
     
     # block = (tol,timestep,x,y,z)
     def fetch_test(self,block):
@@ -141,6 +138,8 @@ class L1Prefetcher:
         pass
 
 
+
+# unit test
 if __name__ == "__main__":
 
     lru_cache = LRU_cache(capacity=100,offsetSize=256)
@@ -155,13 +154,14 @@ if __name__ == "__main__":
     # フェッチキューがからじゃない間取ってくるだと、無限に取ってきてしまう。L2キャッシュの容量も見ないといけない。
     # L2キャッシュが満杯だったら取ってくるのをやめる、もしくは、L2キャッシュの内容をL1キャッシュに退避させて取り続ける？
 
+    # こいつは、一つのスレッドで動き続ける。そうだろ？そうだ。
     while ((not prefetcher.fetch_q_empty()) 
-           and (prefetcher.L2Cache.current_size < prefetcher.L2Cache.capacity)):
-        print("curernt_cache_size=",prefetcher.L2Cache.current_size)
+           and (prefetcher.L2Cache.usedSize < prefetcher.L2Cache.capacity)):
+        lru_cache.printInfo()
         next = prefetcher.pop_front()
         prefetcher.fetch_test(next)
         data = np.random.random_sample(
-            (prefetcher.default_offset,prefetcher.default_offset,prefetcher.default_offset))
+            (prefetcher.default_offset,prefetcher.default_offset,prefetcher.default_offset)).astype(np.float32)
         lru_cache.put(next,data)
         prefetcher.enque_neighbor_blocks(next)
 
