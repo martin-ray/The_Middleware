@@ -49,6 +49,10 @@ class UI:
         original = self.decompressor(compressed)
         BlockAndData[blockId] = original
 
+    def L1MissHandler(self,blockId,L2data,BlockAndData):
+        original = self.decompressor(L2data)
+        BlockAndData[blockId] = original
+
     def getBlocks(self, tol, timestep, x, y, z, xOffset, yOffset, zOffset):
         BlockIds = self.Block2BlockIds(tol, timestep, x, y, z, xOffset, yOffset, zOffset)
         BlockAndData = {}
@@ -64,8 +68,11 @@ class UI:
                     thread.start()
                     threads.append(thread)
                 else:
-                    original = self.decompressor(L2data)
-                    BlockAndData[blockId] = original
+                    thread = threading.Thread(target=self.L1MissHandler,args=(blockId,L2data,BlockAndData))
+                    thread.start()
+                    threads.append(thread)
+                    # original = self.decompressor(L2data)
+                    # BlockAndData[blockId] = original
 
         # Wait for all threads to finish
         for thread in threads:
