@@ -8,12 +8,16 @@
 
 # dequeはスレッドセーフ
 from collections import deque
-
+import asyncio
+import numpy as np
+import threading
+import requests
 
 class NetIF:
-    def __init__(self,Cache,serverIp):
-        self.Cache = Cache
+    def __init__(self,L2Cache,serverIp="http://localhost:8080"):
+        self.L2Cache = L2Cache
         self.sendQ = deque() 
+        self.URL = serverIp
         pass
 
     # 末尾に追加
@@ -21,13 +25,30 @@ class NetIF:
         self.sendQ.append(blockId)
     
     # 緊急なので、前に追加
-    def send_req_urget(self,blockId):
+    def send_req_urgent(self,blockId):
         self.sendQ.appendleft(blockId)
     
+    def IsSendQEmpty(self):
+        if(len(self.sendQ) == 0):
+            return True
+        else:
+            return False
+        
     # 実際に送信。これは別スレッドで実行される
-    def send(self):
-        req = self.sendQ.popleft()
-        print("sending ",req)
+    async def sendLoop(self):
+        while True:
+            if self.IsSendQEmpty():
+                await asyncio.sleep(0.1)
+            else:
+                BlockId = self.sendQ.popleft()
+                
+                header = {
+                    'tol':BlockId[0],
+                    'timestep':BlockId[1],
+                    'x': BlockId[2],
+                    'y': BlockId[3],
+                    'z': BlockId[4]
+                }
 
-        # 帰ってきたら、ちゃんとキャッシュに入れてください！！
-        pass
+                response = requests.get(self.URL,headers=header)
+                self.L2Cache.put(BlockId,response.content)
