@@ -18,23 +18,44 @@ class NetIF:
         self.L2Cache = L2Cache
         self.sendQ = deque() 
         self.URL = serverIp
-        pass
+        # ここで、送信スレッドを起動する
+        self.thread = threading.Thread(target=self.thread_func(self.sendLoop))
+        self.thread.start()
 
     # 末尾に追加
     def send_req(self,blockId):
         self.sendQ.append(blockId)
     
-    # 緊急なので、前に追加
-    def send_req_urgent(self,blockId):
-        self.sendQ.appendleft(blockId)
+    # 緊急なので、前に追加、というより、もうすぐにリクエスト送らないとだめじゃね？
+    def send_req_urgent(self,BlockId):
+
+        header = {
+            'type':'BlockReq',
+            'tol':BlockId[0],
+            'timestep':BlockId[1],
+            'x': BlockId[2],
+            'y': BlockId[3],
+            'z': BlockId[4]
+        }
+
+        response = requests.get(self.URL,headers=header)
+        return response.content
     
     def IsSendQEmpty(self):
         if(len(self.sendQ) == 0):
             return True
         else:
             return False
-        
-    # 実際に送信。これは別スレッドで実行される
+    
+    def firstContact(self,BlockOffset):
+        header = {
+            'type':'FirstContact',
+            'offset':BlockOffset
+        }
+        response = requests.get(self.URL,headers=header)
+        return response.status_code
+    
+    # 別スレッドで実行される送信ループ
     async def sendLoop(self):
         while True:
             if self.IsSendQEmpty():
@@ -52,3 +73,13 @@ class NetIF:
 
                 response = requests.get(self.URL,headers=header)
                 self.L2Cache.put(BlockId,response.content)
+
+    def thread_func(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(self.sendLoop())   
+
+
+    # TODO websocketのついか
+    async def sendLoopSocket(websocket):
+        pass
