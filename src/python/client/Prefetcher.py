@@ -9,12 +9,16 @@ from L1_L2Cache import LRU_cache
 from L1_L2Cache import dynamic_cache
 from NetInterface import NetIF
 
+import asyncio
+import numpy as np
+import threading
+
 class L2Prefetcher:
     def __init__(self,L2Cache,NetIF,serverURL="http://localhost:8080") -> None:
         self.URL = serverURL
 
-        # これ何のためだっけ？
-        self.Tols = []
+        # ToleranceArray
+        self.Tols = [0.0001,0.001,0.01,0.1,0.2,0.3,0.4,0.5]
         self.maxTimestep = 1024
         self.maxX = 1024
         self.maxY = 1024
@@ -23,14 +27,11 @@ class L2Prefetcher:
         self.L2Cache = L2Cache
         self.prefetchedSet = s = set()
         self.fetch_q = deque() # blocks going to get
-
         self.Netif = NetIF
 
-    def first_contact(self):
-        # 初期コンタクトでそれぞれの次元の大きさを決める。
-        # ブロックサイズも決める。
-        # 5次元のブロックの通し番号のつけ方、さらに隣接しているかどうかの判別の仕方、結構難しいと思う。
-        pass
+        # フェッチループを起動
+        self.thread = threading.Thread(target=self.thread_func(self.fetchLoop))
+        self.thread.start()
 
     def enque_neighbor_blocks(self,centerBlock):
 
@@ -40,7 +41,7 @@ class L2Prefetcher:
         y = centerBlock[3]
         z = centerBlock[4]
 
-        ## tolをどうするかはちょっと考えてください。粗い方のtolはいらない気がするんですよね。
+        ## TODO tolの扱い
         for dt in [-1,0,1]:
             for dx in [-self.default_offset, 0, self.default_offset]:
                 for dy in [-self.default_offset, 0, self.default_offset]:
@@ -65,105 +66,84 @@ class L2Prefetcher:
         else:
             return False
 
-
-    # ここ、リクエスト情報はヘッダーに入れて、ボディーは科学技術データだけにしたい。
-    # 今はurlにパラメータを入れているけど、それじゃあちょっとって感じです。
-    def fetch(self,block):
-
-        tol = block[0] 
-        timestep = block[1]
-        x = block[2]
-        y = block[3]
-        z = block[4]
-
-        blockId = (tol,timestep,x,y,z)
-
-        # ここでブロッキングが発生するのはすごく残念ですね。仕方ないのかな。いや、ブロッキングを発生させないために、
-        # ネットワークコンポーネントも一つのスレッドで動かすことにしました。
-        # response = requests.get(self.URL, params=params)
-
-        # if response.status_code == 200:
-        #     print("Request successful")
-        #     response_content = response.content
-        #     numpy_array = np.frombuffer(response_content, dtype=np.uint8)
-
-        #     # put to L2 cache by put(key,value) method
-        #     self.L2Cache.put(blockId,numpy_array)
-            
-        #     # register the prefetched block to prefetcheSet set.
-        #     self.prefetchedSet(blockId) # Do not forget to abondon it from set when move to L1 cache
-
-        #     # enque neighbour blocks of input block
-        #     self.enque_neighbor_blocks(blockId)
-
-        #     return
-        
-        # else:
-        #     print("Request failed")
-        #     return None
-        # NetifのsendQに送るブロックを追加。もしかしたらここら辺冗長化されているかもしれないから、後でリファクタリングして。
+    def fetch(self,blockId):
+        self.prefetchedSet.add(blockId)
         self.Netif.send_req(blockId)
     
     # block = (tol,timestep,x,y,z)
-    def fetch_test(self,block):
-
-
-        tol = block[0] 
-        timestep = block[1]
-        x = block[2]
-        y = block[3]
-        z = block[4]
-        
-        # ここで、L2キャッシュの容量が満杯だったら、リクエストを一回辞められるようにしたいのよね。つまり非同期に処理したいって感じです。
-        params = {
-            'time': timestep,
-            'x': x,
-            'y': y,
-            'z': z,
-            'tol':tol
-        }
-
-        blockId = (tol,timestep,x,y,z)
+    def fetch_test(self,blockId):
         self.prefetchedSet.add(blockId)
         print("fetching {}".format(blockId))
 
     def urgent_fetch(self,block):
         pass
 
+    async def fetch_loop_test(self):
+        while True:
+            if (not self.fetch_q_empty()) and (self.L2Cache.usedSize < self.L2Cache.capacity):
+                lru_cache.printInfo()
+                next = self.pop_front()
+                self.fetch_test(next)
+                data = np.random.random_sample(
+                    (self.default_offset, self.default_offset, self.default_offset)
+                ).astype(np.float32)
+                lru_cache.put(next, data)
+                self.enque_neighbor_blocks(next)
+            else:
+                await asyncio.sleep(1)  # Sleep for 1 second, or adjust as needed
 
+    async def fetchLoop(self):
+        while True:
+            if (not self.fetch_q_empty()) and (self.L2Cache.usedSize < self.L2Cache.capacity):
+                lru_cache.printInfo()
+                nextBlockId = self.pop_front()
+                self.Netif.send_req(nextBlockId)
+                self.enque_neighbor_blocks(next)
+            else:
+                await asyncio.sleep(0.1)  # Sleep for 1 second, or adjust as needed
 
+    def thread_func(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(self.fetchLoop())          
 
 class L1Prefetcher:
-    def __init__(self,decompressor):
+    def __init__(self,decompressor,L1Cache,L2Cache):
+        self.decompressor = decompressor
+        self.L1Cache = L1Cache
+        self.L2Cache = L2Cache
+        pass
+    
+    def letKnowCenterPoint(self,blockId):
         pass
 
 
+## for test
+def thread_func(prefetcher):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(prefetcher.fetch_loop())    
+
+
+def move_to_l1():
+    pass 
 
 # unit test
 if __name__ == "__main__":
 
-    lru_cache = LRU_cache(capacity=100,offsetSize=256)
-    prefetcher = L2Prefetcher(lru_cache)
+    lru_cache = LRU_cache(capacity=300,offsetSize=256)
+    netIF = NetIF(lru_cache)
+    prefetcher = L2Prefetcher(lru_cache,netIF)
+    
     tol = 0.1
     t = 0
     x,y,z = 0,0,0
     first_point = (tol,t,x,y,z)
     prefetcher.fetch_test(first_point)
     prefetcher.enque_neighbor_blocks(first_point)
+    thread = threading.Thread(target=thread_func(prefetcher))
+    thread.start()
 
-    # フェッチキューがからじゃない間取ってくるだと、無限に取ってきてしまう。L2キャッシュの容量も見ないといけない。
-    # L2キャッシュが満杯だったら取ってくるのをやめる、もしくは、L2キャッシュの内容をL1キャッシュに退避させて取り続ける？
-
-    # こいつは、一つのスレッドで動き続ける。そうだろ？そうだ。
-    while ((not prefetcher.fetch_q_empty()) 
-           and (prefetcher.L2Cache.usedSize < prefetcher.L2Cache.capacity)):
-        lru_cache.printInfo()
-        next = prefetcher.pop_front()
-        prefetcher.fetch_test(next)
-        data = np.random.random_sample(
-            (prefetcher.default_offset,prefetcher.default_offset,prefetcher.default_offset)).astype(np.float32)
-        lru_cache.put(next,data)
-        prefetcher.enque_neighbor_blocks(next)
 
 
          
