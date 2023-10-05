@@ -2,47 +2,39 @@ import numpy as np
 from decompressor import Decompressor
 from NetInterface import NetIF
 from Prefetcher import L2Prefetcher
+from Prefetcher import L1Prefetcher
 from L1_L2Cache import LRU_cache
 from recomposer import Recomposer
 import threading
 
 
-class UI:
-    # サーバが動いている
-    ## 初期コンタクトでは、データサイズ、ブロックサイズなどをやり取りする。
-
-## timestep0,x,y,z = 0からスタートするので、それを最初に取ってくる
-
-## decompressorは最初にインスタンスとして作ってしまう。それをみんなで共有して使う感じ。
-    
+class ClientAPI:
     def __init__(self):
         self.decompressor = Decompressor()
         
-        # decompressorインスタンスを共有するインスタンスは
+        # 実験パラメータ
         self.L1CacheSize = 100
         self.L2CacheSize = 1000
         self.blockOffset = 256
         
-        # ここの、キャッシュサイズは変えてみるとおもろいって話
-        # 生データが入っている
+        # 各コンポーネント
         self.L1Cache = LRU_cache(self.L1CacheSize,self.blockOffset,decompressor=self.decompressor)
-        
-        # 圧縮されたデータが入っている
         self.L2Cache = LRU_cache(self.L2CacheSize,self.blockOffset)
-
-        # netInterface
+        # sendLoop threadはconstructorの中で起動
         self.netIF = NetIF(L2Cache=self.L2Cache)
-
-        # L2プリふぇっちゃー (L2キャッシュに圧縮されたデータをガンガン持ってくる担当)
-        self.prefetcher = L2Prefetcher(L2Cache=self.L2Cache,NetIF=self.netIF)
-
-        # recomposer
+        # fetchLoop threadはconstructorの中で起動
+        self.L1pref = L1Prefetcher(self.decompressor,L2Cache=self.L2Cache)
+        # fetchLoop threadはconstructorの中で起動
+        self.L2pref = L2Prefetcher(L2Cache=self.L2Cache,NetIF=self.netIF)
         self.recomposer = Recomposer()
 
-        # 一番最初に初期データを持ってきて、ループを開始する
+        # 初期コンタクト。ワンフェッチでのデータサイズを規定
+        response_code = self.netIF.firstContact(self.blockOffset)
+        if (response_code != 200):
+            print("server error")
+            exit(0)
 
-        # この辺で、ループをスタートする。
-        start_loop()
+        # 必要なループ達(送信ループ、L2フェッチループ、L1フェッチループ)は既に別スレッドで実行済
     
     def L2MissHandler(self,blockId,BlockAndData):
         compressed = self.netIF.send_req_urgent(blockId)
@@ -71,8 +63,6 @@ class UI:
                     thread = threading.Thread(target=self.L1MissHandler,args=(blockId,L2data,BlockAndData))
                     thread.start()
                     threads.append(thread)
-                    # original = self.decompressor(L2data)
-                    # BlockAndData[blockId] = original
 
         # Wait for all threads to finish
         for thread in threads:
@@ -107,10 +97,10 @@ class UI:
             for yIdx in yStartIdx:
                 for zIdx in zStartIdx:
                     BlockIds.append(tol,timestep,xIdx,yIdx,zIdx)
-
+        
         return BlockIds
-    
-### L2とL1はそのうち3 wayとかにするのもマジで面白そうだけどね。
+
+
 
 ## もう一つは、L1とL2の間にいるプリふぇっちゃ。こいつは、decompressorに指示を出す権限を持っている。
 ### L1キャッシュでノンヒットした場合、まずは、L2を見に行く。それでヒットすれば、でコンプレッサーを起動してバーッてやればいい。
