@@ -4,10 +4,10 @@ import _mgard as mgard
 
 
 class Slicer:
-
     # default 引数
-    def __init__(self,filename="/scratch/aoyagir/step1_500_test.h5") -> None:
+    def __init__(self,blockOffset,filename="/scratch/aoyagir/step1_500_test.h5") -> None:
         self.filename = filename
+        self.blockOffset = blockOffset
         self.file = h5py.File(filename, 'r')
         self.dataset = self.file['data']
         print(self.dataset.shape)
@@ -26,6 +26,14 @@ class Slicer:
         subset = self.dataset[timestep,  x_start:x_end, y_start:y_end, z_start:z_end]
         retsubset = np.squeeze(subset)
         return retsubset
+    
+    # blockId = (timestep,x,y,z)
+    def sliceData(self,blockId):
+        t = blockId[0]
+        x = blockId[1]
+        y = blockId[2]
+        z = blockId[3]
+        return self.slice_single_step(t,x,x+self.blockOffset,y,y+self.blockOffset,z,z+self.blockOffset)
 
 
 if __name__ == "__main__":
@@ -38,10 +46,19 @@ if __name__ == "__main__":
     tol = 0.1
 
     print("original=",original.nbytes,"bytes")
+    print("original dtype",original.dtype)
+
     compressed = mgard.compress(original, tol, 0)
     print("compressed=",compressed.nbytes,"bytes")
+    print("compressed type",type(compressed))
+    print("compressed dtype",compressed.dtype)
     decompressed = mgard.decompress(compressed)
     print("compression ratio:",original.nbytes/compressed.nbytes)
     e = original - decompressed
     print("max-e:",e.max())
-
+    print("decompressed:",decompressed.nbytes,"bytes")
+    print("decompressed dtype",decompressed.dtype)
+    print("convert to float32")
+    decompressed = decompressed.astype(np.float32)
+    print("converted decompressed dtype",decompressed.dtype)
+    print("size",decompressed.nbytes)
