@@ -27,12 +27,13 @@ class Slicer:
         retsubset = np.squeeze(subset)
         return retsubset
     
-    # blockId = (timestep,x,y,z)
+    # blockId = (tol,timestep,x,y,z)
     def sliceData(self,blockId):
-        t = blockId[0]
-        x = blockId[1]
-        y = blockId[2]
-        z = blockId[3]
+        tol = blockId[0]
+        t = blockId[1]
+        x = blockId[2]
+        y = blockId[3]
+        z = blockId[4]
         return self.slice_single_step(t,x,x+self.blockOffset,y,y+self.blockOffset,z,z+self.blockOffset)
 
 
