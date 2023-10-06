@@ -1,15 +1,45 @@
 import numpy as np
-
+from collections import defaultdict ## thread safe dictionary
+import threading
 
 # 最後にリクエストされた点の中心部分を常に追いかける必要がある気がします。
 class dynamic_cache:
-    def __init__(self,size):
-        self.size = size
-    
-    def add(self):
-        pass
-    def prefetch(self):
-        pass
+    def __init__(self,capacity,offsetSize):
+        self.capacity = capacity
+        self.usedSize = 0
+        self.usedSizeInMB = 0
+        self.SizeOfFloat = 4
+        self.offsetSize = offsetSize
+        self.BlockX = offsetSize
+        self.BlockY = offsetSize
+        self.BlockZ = offsetSize
+        self.OneBlockSize = offsetSize**3*4/1024/1024
+        self.capacityInMB = offsetSize**3*4*capacity/1024/1024
+        self.blocksize = self.SizeOfFloat*self.BlockX*self.BlockY*self.BlockZ
+        self.cache = {}  # Dictionary to store cached items key = (tol,t,x,y,z), value = compressedData/decompressedData
+        self.radius = 100 # for now.
+        self.CacheLock = threading.Lock()
+
+    # key = (tol,time,x,y,z), value = compressedData/decompressedData
+    def add(self,key,value):
+        self.cache[key] = value
+
+    def delete(self,key):
+        self.cache.pop(key)
+
+    # 別スレッドで常に実行。ユーザが見るポイントが変わったら、その点を中心に
+    async def radiusSearch(self,userPoint):
+        while True:
+            # ユーザが見ている点と、注目点の距離がradiusより大きかったらそれを取り出す
+            for key, _ in self.cache:
+                if (key - userPoint)**2 > self.radius**2:
+                    with self.CacheLock:
+                        self.delete(key)
+
+                else:
+                    # そのデータはほっておいてok
+                    pass
+            pass
 
 
 class LRU_cache:
@@ -27,35 +57,38 @@ class LRU_cache:
         self.blocksize = self.SizeOfFloat*self.BlockX*self.BlockY*self.BlockZ
         self.cache = {}  # Dictionary to store cached items
         self.order = []  # List to maintain the order of items
+        self.CacheLock = threading.Lock()
         self.printInitInfo()
         self.printInfo()
 
 
     # key = (tol,timestep,x,y,z) x,y,zはブロックのサイズで割れる値です。
     def get(self, key):
-        if key in self.cache:
-            # Move the accessed item to the end (most recently used)
-            self.order.remove(key)
-            self.order.append(key)
-            return self.cache[key]
-        return None
+        with self.CacheLock:
+            if key in self.cache:
+                # Move the accessed item to the end (most recently used)
+                self.order.remove(key)
+                self.order.append(key)
+                return self.cache[key]
+            return None
 
     def put(self, key, value):
-        maxCapacityFlag = False
-        if key in self.cache:
-            # Update the value and move the item to the end
-            self.order.remove(key)
-        elif len(self.cache) >= self.capacity:
-            # Evict the least recently used item
-            oldest_key = self.order.pop(0)
-            self.cache.pop(oldest_key)
-            self.usedSize = cache_capacity
-            maxCapacityFlag = True
-        self.cache[key] = value
-        self.order.append(key)
-        if not maxCapacityFlag:
-            self.usedSize = self.usedSize + 1
-            self.usedSizeInMB = self.usedSizeInMB + self.OneBlockSize
+        with self.CacheLock:
+            maxCapacityFlag = False
+            if key in self.cache:
+                # Update the value and move the item to the end
+                self.order.remove(key)
+            elif len(self.cache) >= self.capacity:
+                # Evict the least recently used item
+                oldest_key = self.order.pop(0)
+                self.cache.pop(oldest_key)
+                self.usedSize = cache_capacity
+                maxCapacityFlag = True
+            self.cache[key] = value
+            self.order.append(key)
+            if not maxCapacityFlag:
+                self.usedSize = self.usedSize + 1
+                self.usedSizeInMB = self.usedSizeInMB + self.OneBlockSize
 
     def printInitInfo(self):
         print("############ cache initial info ###########\n")
