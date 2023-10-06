@@ -11,12 +11,12 @@ class compressor:
         elif device == "SERIAL":
             self.config.dev_type = mgard.DeviceType.SERIAL
     
-    def decompress_req(self,blockId,original):
-        compressed = mgard.compress(original, 0.1, 0, mgard.ErrorBoundType.REL, self.config)
+    def compress_req(self,blockId,original,tol):
+        compressed = mgard.compress(original, tol, 0, mgard.ErrorBoundType.REL, self.config)
         self.L3Cache.put(blockId,compressed)
         return
     
     def decompress(self,original):
-        compressed = mgard.compress(original, 0.1, 0, mgard.ErrorBoundType.REL, self.config)
+        compressed = mgard.compress(original, tol, 0, mgard.ErrorBoundType.REL, self.config)
         return compressed
     

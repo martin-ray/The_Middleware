@@ -21,16 +21,18 @@ class HttpAPI:
         self.compressor = compressor
         self.sendQ = deque()
 
+    # 呼び出し側が、別スレッドで実行
     def get(self,blockId):
+        tol = blockId[0]
         L3data = self.L3Cache.get(blockId)
         if L3data == None:
             L4data = self.L4Cache.get(blockId)
             if L4data == None:
                 original = self.Slicer.sliceData(blockId)
-                compressed = self.compressor.compress(original)
+                compressed = self.compressor.compress(original,tol)
                 return compressed
             else:
-                return self.compressor.compress(L4data)
+                return self.compressor.compress(L4data,tol)
         else:
             return L3data
 
