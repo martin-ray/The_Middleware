@@ -11,15 +11,17 @@ class Decompressor:
         elif device == "SERIAL":
             self.config.dev_type = mgard.DeviceType.SERIAL
 
-    def decompress_req(self,compressed):
+    def decompress_req(self,blockId,compressed):
         decompressed = mgard.decompress(compressed).astype(np.float32)
-        self.L1Cache.put(decompressed)
-        return
+        with self.L1Cache.CacheLock:
+            self.L1Cache.put(blockId,decompressed)
+            return
     
-
-    def decompress_req_urgent(self,compressed):
+    def decompress_req_urgent(self,blockId,compressed):
         decompressed = mgard.decompress(compressed).astype(np.float32)
         return decompressed
     
-    def decompress(self):
-        pass
+    # 呼び出し側はblockIdを持っている状態
+    def decompress(self,compressed):
+        decompressed = mgard.decompress(compressed).astype(np.float32)
+        return decompressed

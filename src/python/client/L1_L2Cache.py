@@ -3,7 +3,7 @@ from collections import defaultdict ## thread safe dictionary
 import threading
 
 # 最後にリクエストされた点の中心部分を常に追いかける必要がある気がします。
-class dynamic_cache:
+class TSDynamic_cache: # 自分で自分のロックを持っているので、スレッドセーフです
     def __init__(self,capacity,offsetSize):
         self.capacity = capacity
         self.usedSize = 0
@@ -20,12 +20,15 @@ class dynamic_cache:
         self.radius = 100 # for now.
         self.CacheLock = threading.Lock()
 
+
     # key = (tol,time,x,y,z), value = compressedData/decompressedData
     def add(self,key,value):
-        self.cache[key] = value
+        with self.CacheLock:
+            self.cache[key] = value
 
     def delete(self,key):
-        self.cache.pop(key)
+        with self.CacheLock:
+            self.cache.pop(key)
 
     # 別スレッドで常に実行。ユーザが見るポイントが変わったら、その点を中心に
     async def radiusSearch(self,userPoint):
@@ -33,15 +36,13 @@ class dynamic_cache:
             # ユーザが見ている点と、注目点の距離がradiusより大きかったらそれを取り出す
             for key, _ in self.cache:
                 if (key - userPoint)**2 > self.radius**2:
-                    with self.CacheLock:
-                        self.delete(key)
-
+                    self.delete(key)
                 else:
                     # そのデータはほっておいてok
                     pass
             pass
 
-
+# スレッドセーフになってる
 class LRU_cache:
     def __init__(self, capacity=100, offsetSize=256, decompressor=None): # offsetSize知る必要ある？
         self.capacity = capacity
@@ -116,8 +117,6 @@ if __name__ == "__main__":
     lru_cache.put(key1,data)
     print(lru_cache.get("key2"))  # Output: "value2"
     print(lru_cache.usedSize)
-
-    
     lru_cache.put("key4", "value4")  # This will evict "key1" as it's the least recently used
     lru_cache.put("key5","data")
     print(lru_cache.get("key1"))  # Output: None, as "key1" was evicted
