@@ -29,7 +29,7 @@ class Slicer:
     
     # blockId = (tol,timestep,x,y,z)
     def sliceData(self,blockId):
-        tol = blockId[0]
+        _ = blockId[0]
         t = blockId[1]
         x = blockId[2]
         y = blockId[3]
