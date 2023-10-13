@@ -12,14 +12,22 @@ import asyncio
 import numpy as np
 import threading
 from slice import Slicer
+from compressor import compressor
+from L3_L4Cache import LRU_cache
+from prefetcher import L3Prefetcher,L4Prefetcher
 
 class HttpAPI:
-    def __init__(self,L3Cache,L4Cache,Slicer,compressor,serverIp="http://localhost:8080"):
-        self.L3Cache = L3Cache
-        self.L4Cache = L4Cache
-        self.Slicer = Slicer
-        self.compressor = compressor
-        self.sendQ = deque()
+    def __init__(self,L3CacheSize=2000,L4CacheSize=500,serverIp="http://localhost:8080"):
+        self.L3Cache = LRU_cache(L3CacheSize)
+        self.L4Cache = LRU_cache(L4CacheSize)
+        self.compressor = compressor(self.L3Cache)
+        self.Slicer = Slicer()
+        self.L4Pref = L4Prefetcher(L4Cache=self.L4Cache)
+        self.L3Pref = L3Prefetcher(self.L3Cache, self.L4Cache, compressor=self.compressor, L4Prefetcher=self.L4Pref)
+        
+
+        
+        self.sendQ = deque() # いる？
 
     # 呼び出し側が、別スレッドで実行
     def get(self,blockId):
@@ -30,6 +38,7 @@ class HttpAPI:
             if L4data == None:
                 original = self.Slicer.sliceData(blockId)
                 compressed = self.compressor.compress(original,tol)
+                # ここで、どうにかして、ミスしていることを各コンポーネントに伝える必要があります。
                 return compressed
             else:
                 return self.compressor.compress(L4data,tol)
