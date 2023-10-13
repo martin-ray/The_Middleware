@@ -72,7 +72,19 @@ class L2Prefetcher:
         self.prefetchedSet.add(blockId)
         print("fetching {}".format(blockId))
 
-    def InformL2Miss(self,blockId):
+    # ここでどういう風にプリフェッチポリシーを変えるかっていうのもかなり見ものではある
+    # なかなか気になるところですね。
+    def InformL2MissByL1Pref(self,blockId):
+        print("L1 prefetcher missed to catch on L2 cache:{}\n".format(blockId))
+        # TODO 何かしらのプリフェッチポリシーの変更を加える必要
+        pass
+
+    def InformL2MissByUser(self,blockId):
+        print("L1 and L2 Missed the request by user:{}\n",blockId)
+
+    def InformL1MissByUser(self,blockId):
+        print("the data was catched in L2: {}\n".format(blockId))
+        # L2でぎりぎりキャッチできたので、何かしらのL2のプリフェッチポリシーをここで変更する必要があるかもしれない。
         pass
 
     async def fetch_loop_test(self):
@@ -94,6 +106,7 @@ class L2Prefetcher:
             if (not self.fetch_q_empty()) and (self.L2Cache.usedSize < self.L2Cache.capacity):
                 self.L2Cache.printInfo()
                 nextBlockId = self.pop_front()
+                # ここはべすすれっどに処理を任せた方がいいかもしれません
                 self.Netif.send_req(nextBlockId)
                 self.enque_neighbor_blocks(nextBlockId)
             else:
@@ -105,7 +118,7 @@ class L2Prefetcher:
         loop.run_until_complete(self.fetchLoop())          
 
 
-# 継承して書いてもいいかも (まあ今回はいいや)
+# TODO 継承
 class L1Prefetcher:
     def __init__(self,decompressor,NetIF,L1Cache,L2Cache):
         self.decompressor = decompressor
@@ -120,9 +133,9 @@ class L1Prefetcher:
         self.maxZ = 1024
         self.default_offset = 256
         self.prefetchedSet = set()
-        self.fetch_q = deque() # blocks going to get
+        self.fetch_q = deque()
         
-        # フェッチループを起動
+        # フェッチループ起動
         self.thread = threading.Thread(target=self.thread_func(self.fetchLoop))
         self.thread.start()
 
@@ -156,9 +169,12 @@ class L1Prefetcher:
     def letKnowCenterPoint(self,blockId):
         pass
 
+    def InformL1MissByUser(self,blockId):
+        print("User missed to catch in L1: {}\n".format(blockId))
+
     def L2MissHandler(self,blockId,BlockAndData):
         compressed = self.netIF.send_req_urgent(blockId)
-        original = self.decompressor(compressed)
+        original = self.decompressor.decompress(compressed)
         self.L1Cache.put(blockId,original)
 
     def L2HitHandler(self,blockId,compressed):
@@ -173,7 +189,7 @@ class L1Prefetcher:
                 compressed = self.L2Cache.get(nextBlockId)
                 if compressed == None: #L2Miss
                     # L2のプリフェッチポリシーを変更.どうやって？今までキューにたまっているものを捨てる？どうする？わかりまてー－ん。
-                    self.L2Cache.InformL2Miss(nextBlockId)
+                    self.L2Cache.InformL2MissByL1Pref(nextBlockId)
                     thread = threading.Thread(target=self.L2MissHandler, args=(nextBlockId))
                     thread.start()
                 else: # L2Hit
@@ -188,7 +204,8 @@ class L1Prefetcher:
             if (not self.fetch_q_empty()) and (self.L1Cache.usedSize < self.L1Cache.capacity):
                 self.L1Cache.printInfo()
                 nextBlockId = self.pop_front()
-                self.Netif.send_req(nextBlockId)
+                self.L2Cache.get(nextBlockId)
+                # self.Netif.send_req(nextBlockId)
                 self.enque_neighbor_blocks(nextBlockId)
             else:
                 await asyncio.sleep(0.1)  # Sleep for 1 second, or adjust as needed
@@ -197,7 +214,6 @@ class L1Prefetcher:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(self.fetchLoop())       
-
 
 ## for test
 def thread_func(prefetcher):
