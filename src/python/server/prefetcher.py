@@ -6,13 +6,17 @@ from collections import deque
 import asyncio
 import numpy as np
 import threading
+import time
+
 # self-defined libraries
 import _mgard as mgard
 from L3_L4Cache import LRU_cache
 from L3_L4Cache import dynamic_cache
+from slice import Slicer
 
+# L3キャッシュとL4キャッシュプリふぇっちゃで同じスライサーを共有すると、なぜか片方が全く取れなくなるという現象に遭遇
 class L3Prefetcher:
-    def __init__(self,L3Cache,L4Cache,Slicer,compressor, blockOffset=256) -> None:
+    def __init__(self,L3Cache,L4Cache,compressor, blockOffset=256) -> None:
         # ToleranceArray
         self.Tols = [0.0001,0.001,0.01,0.1,0.2,0.3,0.4,0.5]
         self.maxTimestep = 1024
@@ -22,9 +26,11 @@ class L3Prefetcher:
         self.default_offset = blockOffset
         self.L3Cache = L3Cache
         self.L4Cache = L4Cache
-        self.Slicer = Slicer
+        # これね、L3PrefetcherとL4Prefetcherで別々のもの持ってないとなんか片方が一生使えなくなる
+        self.Slicer = Slicer()
         self.compressor = compressor
-        self.prefetchedSet = s = set()
+        self.gonnaPrefetchSet = set()
+        self.prefetchedSet = set()
         self.fetch_q = deque() # blocks going to get
         
         # フェッチループを起動
@@ -53,7 +59,7 @@ class L3Prefetcher:
                             or (z+dz < 0) or (z+dz >= self.maxZ)):
                             continue
                         else:
-                            print("appending {}".format((tol,timestep+dt, x+dx, y+dy, z+dz)))
+                            print("appending {} in L3".format((tol,timestep+dt, x+dx, y+dy, z+dz)))
                             self.fetch_q.append((tol,timestep+dt, x+dx, y+dy, z+dz))
                             self.prefetchedSet.add((tol,timestep+dt, x+dx, y+dy, z+dz))
 
@@ -108,31 +114,49 @@ class L3Prefetcher:
 
 
     # ここで、
-    def L4MisssHandler(self,nextBlockId):
-        d = self.Slicer.sliceData(nextBlockId)
-        tol = nextBlockId[0]
-        compressed = self.compressor.compress(d,tol)
-        self.L3Cache.put(nextBlockId,compressed)
+    def L4MissHandler(self,nextBlockId):
+        try :
+            d = self.Slicer.sliceData(nextBlockId)
+            time.sleep(1)
+            tol = nextBlockId[0]
+            compressed = self.compressor.compress(d,tol)
+            self.L3Cache.put(nextBlockId,compressed)
+        except Exception as e:
+            # Handle other exceptions, optionally print or log the exception
+            print(f"An exception occurred in L4MissHandler: {e}")
+
 
     def L4HitHandler(self,nextBlockId,original):
-        tol = nextBlockId[0]
-        compressed = self.compressor.compress(original,tol)
-        self.L3Cache.put(nextBlockId,compressed)
+        try:
+            tol = nextBlockId[0]
+            compressed = self.compressor.compress(original,tol)
+            self.L3Cache.put(nextBlockId,compressed)
+        except Exception as e:
+            print(f"An exception occurred : {e}")
 
     
     async def fetchLoop(self):
         while True:
             if (not self.fetch_q_empty()) and (self.L3Cache.usedSize < self.L3Cache.capacity):
-                self.L3Cache.printInfo()
                 nextBlockId = self.pop_front()
-                compressed = self.L4Cache.get(nextBlockId)
-                if compressed == None:
-                    print("L4 Miss")
-                    thread = threading.Thread(target=self.L4MissHandler, args=(nextBlockId))
-                    thread.start()
+                original = self.L4Cache.get(nextBlockId)
+                self.L3Cache.printAllKeys()
+                if original is None:
+                    print("L4 Miss!",nextBlockId)
+                    # thread = threading.Thread(target=self.L4MissHandler, args=(nextBlockId,))
+                    # thread.start()
+                    d = self.Slicer.sliceData(nextBlockId)
+                    tol = nextBlockId[0]
+                    compressed = self.compressor.compress(d,tol)
+                    self.L3Cache.put(nextBlockId,compressed)
+                    print("L3 keys")
+                    self.L3Cache.printAllKeys()
+                    print("L4 keys")
+                    self.L4Cache.printAllKeys()
                 else:
-                    thread = threading.Thread(target=self.L4HitHandler, args=(nextBlockId,compressed))
-                    thread.start()
+                    tol = nextBlockId[0]
+                    compressed = self.compressor.compress(original,tol)
+                    self.L3Cache.put(nextBlockId,compressed)
                 self.enque_neighbor_blocks(nextBlockId)
             else:
                 await asyncio.sleep(0.1)  # Sleep for 1 second, or adjust as needed
@@ -145,9 +169,9 @@ class L3Prefetcher:
 
 # TODO 継承
 class L4Prefetcher:
-    def __init__(self,L4Cache,Slicer):
+    def __init__(self,L4Cache):
         self.L4Cache = L4Cache
-        self.Slicer = Slicer
+        self.Slicer = Slicer()
 
         self.Tols = [0.0001,0.001,0.01,0.1,0.2,0.3,0.4,0.5]
         self.maxTimestep = 1024
@@ -155,13 +179,15 @@ class L4Prefetcher:
         self.maxY = 1024
         self.maxZ = 1024
         self.default_offset = 256
-        self.prefetchedSet = set()
+        self.gonnaPrefetchSet = set() # プリフェッチしに行くセット
+        self.prefetchedSet = set() # プリフェッチしたセット
         self.fetch_q = deque()
         
         # フェッチループ起動
         self.thread = threading.Thread(target=self.thread_func)
         self.thread.start()
 
+        # L4に最初のものを円キューしたわけですよ。
         self.enqueue_first_blockId()
 
     def enque_neighbor_blocks(self,centerBlock):
@@ -184,7 +210,6 @@ class L4Prefetcher:
                             or (z+dz < 0) or (z+dz >= self.maxZ)):
                             continue
                         else:
-                            print("appending {}".format((tol,timestep+dt, x+dx, y+dy, z+dz)))
                             self.fetch_q.append((tol,timestep+dt, x+dx, y+dy, z+dz))
                             self.prefetchedSet.add((tol,timestep+dt, x+dx, y+dy, z+dz))
 
@@ -212,11 +237,13 @@ class L4Prefetcher:
         while True:
             if (not self.fetch_q_empty()) and (self.L4Cache.usedSize < self.L4Cache.capacity):
                 self.L4Cache.printInfo()
+                self.L4Cache.printAllKeys()
                 nextBlockId = self.pop_front()
                 data = self.Slicer.sliceData(nextBlockId)
-                self.L4Cache(data)
+                self.L4Cache.put(nextBlockId,data)
                 self.enque_neighbor_blocks(nextBlockId)
             else:
+                print("L4 prefetcher waiting...")
                 await asyncio.sleep(0.1)  # Sleep for 1 second, or adjust as needed
 
     def thread_func(self):
