@@ -1,16 +1,6 @@
 import numpy as np
 import threading
 
-class dynamic_cache:
-    def __init__(self,size):
-        self.size = size
-    
-    def add(self):
-        pass
-    def prefetch(self):
-        pass
-
-
 class LRU_cache:
     def __init__(self, capacity,offsetSize=100): # offsetSize知る必要ある？
         self.capacity = capacity
@@ -61,14 +51,32 @@ class LRU_cache:
 
     def printInitInfo(self):
         print("############ cache initial info ###########")
-        print("capacity = {}\nblockOffset = {}\n,capacityInMb = {}".format(self.capacity,self.offsetSize,self.capacity))
+        print("capacity = {}\nblockOffset = {}\ncapacityInMb = {}\n".format(self.capacity,self.offsetSize,self.capacity))
 
     def printInfo(self):
         print("############ cache info ###########")
-        print("usedSize/capacity = {}/{}\nusedSizeInMB/capacityInMb = {}/{}".format(
+        print("usedSize/capacity = {}/{}\nusedSizeInMB/capacityInMb = {}/{}\n".format(
             self.usedSize,self.capacity,
             self.usedSizeInMB,self.capacityInMB)
             )
+        
+    def printAllKeys(self):
+        keys = self.cache.keys()
+        print(keys)
+
+    def clearCache(self):
+        self.cache = {}
+        self.order = []
+
+class dynamic_cache:
+    def __init__(self,size):
+        self.size = size
+    
+    def add(self):
+        pass
+    def prefetch(self):
+        pass
+
 
 # Example usage and test
 if __name__ == "__main__":
