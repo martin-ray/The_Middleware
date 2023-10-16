@@ -134,6 +134,9 @@ class LRU_cache:
 
     def changeCapacity(self,capacity):
         self.capacity = capacity
+    
+    def changeBlockoffset(self,blockOffset):
+        self.offsetSize = blockOffset
 
 class dynamic_cache:
     def __init__(self,size):
