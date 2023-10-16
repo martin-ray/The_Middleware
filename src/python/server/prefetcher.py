@@ -34,9 +34,12 @@ class L3Prefetcher:
         self.prefetchedSet = set()
         self.prefetch_q = deque() # blocks going to get
         
+        # スレッドを止めるためのフラグ
+        self.stop_thread = False
+
         # フェッチループを起動
         self.thread = threading.Thread(target=self.thread_func)
-        self.thread.start()
+        self.startPrefetching()
 
         # 最初のブロックを投下
         self.enqueue_first_blockId()
@@ -99,7 +102,7 @@ class L3Prefetcher:
 
     
     async def fetchLoop(self):
-        while True:
+        while not self.stop_thread:
             if (not self.prefetch_q_empty()) and (self.L3Cache.usedSize < self.L3Cache.capacity):
                 
                 nextBlockId = self.pop_front()
@@ -115,7 +118,6 @@ class L3Prefetcher:
                         print("L4 prefetchQ:")
                         print(self.L4Pref.prefetch_q)
                     d = self.Slicer.sliceData(nextBlockId)
-
                     # write to L4 also
                     self.L4Cache.put(nextBlockId,d)
                     tol = nextBlockId[0]
@@ -137,6 +139,11 @@ class L3Prefetcher:
                 self.enque_neighbor_blocks(nextBlockId)
             else:
                 await asyncio.sleep(0.1)  # Sleep for 1 second, or adjust as needed
+    def startPrefetching(self):
+        self.thread.start()
+
+    def stop(self):
+        self.stop_thread = True
 
     def thread_func(self):
         loop = asyncio.new_event_loop()
@@ -159,10 +166,11 @@ class L4Prefetcher:
         self.gonnaPrefetchSet = set() # プリフェッチしに行くセット
         self.prefetchedSet = set() # プリフェッチしたセット
         self.prefetch_q = deque()
-        
+        self.stop_thread = False
+
         # フェッチループ起動
         self.thread = threading.Thread(target=self.thread_func)
-        self.thread.start()
+        self.startPrefetching()
 
         # L4に最初のものを円キューしたわけですよ。
         self.enqueue_first_blockId()
@@ -215,7 +223,7 @@ class L4Prefetcher:
         
 
     async def fetchLoop(self):
-        while True:
+        while not self.stop_thread:
             if (not self.prefetch_q_empty()) and (self.L4Cache.usedSize < self.L4Cache.capacity):
                 nextBlockId = self.pop_front()
                 data = self.Slicer.sliceData(nextBlockId)
@@ -224,7 +232,14 @@ class L4Prefetcher:
                 self.enque_neighbor_blocks(nextBlockId)
             else:
                 await asyncio.sleep(0.1)  # Sleep for 1 second, or adjust as needed
+    
 
+    def startPrefetching(self):
+        self.thread.start()
+
+    def stop(self):
+        self.stop_thread = True
+    
     def thread_func(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
