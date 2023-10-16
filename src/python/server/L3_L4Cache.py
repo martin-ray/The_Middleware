@@ -73,8 +73,8 @@ class LRU_cache_old:
 
 
 class LRU_cache:
-    def __init__(self, capacity, offsetSize=100):
-        self.capacity = capacity
+    def __init__(self, capacity, offsetSize=256):
+        self.capacity = capacity ## block that can be store
         self.usedSize = 0
         self.usedSizeInMB = 0
         self.SizeOfFloat = 4
@@ -82,9 +82,8 @@ class LRU_cache:
         self.BlockX = offsetSize
         self.BlockY = offsetSize
         self.BlockZ = offsetSize
-        self.OneBlockSize = offsetSize ** 3 * 4 / 1024 / 1024
-        self.capacityInMB = offsetSize ** 3 * 4 * capacity / 1024 / 1024
-        self.blocksize = self.SizeOfFloat * self.BlockX * self.BlockY * self.BlockZ
+        self.OneBlockSize = offsetSize ** 3 * self.SizeOfFloat
+        self.capacityInMB = offsetSize ** 3 * self.SizeOfFloat * capacity / 1024 / 1024
         self.cache = OrderedDict()  # Use OrderedDict to maintain order
         self.CacheLock = threading.Lock()
         self.printInitInfo()
@@ -93,29 +92,48 @@ class LRU_cache:
     def get(self, key):
         with self.CacheLock:
             if key in self.cache:
-                # Move the accessed item to the end (most recently used)
-                value = self.cache.pop(key)
-                self.cache[key] = value
-                return value
+                # Move the accessed item to the end
+                self.cache.move_to_end(key)
+                return self.cache[key]
         return None
 
     def put(self, key, value):
-        maxCapacityFlag = False
         with self.CacheLock:
             if key in self.cache:
-                # Update the value and move the item to the end
-                self.cache.pop(key)
+            # If the key already exists, move it to the end
+                self.cache.move_to_end(key)
             elif len(self.cache) >= self.capacity:
                 # Evict the least recently used item (first item in OrderedDict)
                 self.cache.popitem(last=False)
-                self.usedSize -= 1
-                self.usedSizeInMB -= self.OneBlockSize
                 print("cache is full! replacing!")
             self.cache[key] = value
-            if not maxCapacityFlag:
-                self.usedSize += 1
-                self.usedSizeInMB += self.OneBlockSize
 
+    def getUsedSize(self):
+        return len(self.cache)
+    
+    def getUsedSizeInMb(self):
+        return self.OneBlockSize*len(self.cache)/1024/1024
+    
+
+    def printInitInfo(self):
+        print("############ cache initial info ###########")
+        print("capacity = {}\nblockOffset = {}\ncapacityInMb = {}\n".format(self.capacity,self.offsetSize,self.capacity))
+
+    def printInfo(self):
+        print("usedSizeInMB/capacityInMb = {}/{}\n".format(
+            self.getUsedSizeInMb(),self.capacityInMB)
+            )
+        
+    def printAllKeys(self):
+        keys = self.cache.keys()
+        print(keys)
+
+    def clearCache(self):
+        self.cache = {}
+        self.order = []
+
+    def changeCapacity(self,capacity):
+        self.capacity = capacity
 
 class dynamic_cache:
     def __init__(self,size):
@@ -130,7 +148,7 @@ class dynamic_cache:
 # Example usage and test
 if __name__ == "__main__":
     cache_capacity = 10
-    lru_cache = LRUCache2(cache_capacity)
+    lru_cache = LRU_cache(cache_capacity)
     lru_cache.put("key1", "value1")
     lru_cache.put("key2", "value2")
     lru_cache.put("key3", "value3")
