@@ -8,7 +8,7 @@ from L3_L4Cache import LRU_cache
 from prefetcher import L3Prefetcher,L4Prefetcher
 
 class HttpAPI:
-    def __init__(self,L3CacheSize=2000,L4CacheSize=500,blockSize=256,serverIp="http://localhost:8080"):
+    def __init__(self,L3CacheSize=500,L4CacheSize=250,blockSize=256,serverIp="http://localhost:8080"):
         self.L3Cache = LRU_cache(L3CacheSize)
         self.L4Cache = LRU_cache(L4CacheSize)
         self.compressor = compressor(self.L3Cache)
@@ -22,21 +22,30 @@ class HttpAPI:
         self.blockSize = blockSize
 
         # 別スレッドで走っているプリフェッチを停止
+        # RuntimeError: threads can only be started onceというエラーをいただきましたので、
+        # 止めずにやる / 新しくスレッドを作るのにたくですね。
+        print("stopping the prefetch thread")
         self.L3Pref.stop()
         self.L4Pref.stop()
-
-        # キャッシュをクリア
-        self.L3Cache.clearCache()
-        self.L4Cache.clearCache()
-
-        # サイズを変更
-        self.L3Cache.changeCapacity(L3CacheSize)
-        self.L4Cache.changeCapacity(L4CacheSize)
 
         # プリフェッチのサイズも変更
         self.L3Pref.blockOffset = self.blockSize
         self.L4Pref.blockOffset = self.blockSize
         self.Slicer.changeBlockSize = self.blockSize
+
+        # サイズを変更
+        print("changin the cache size and block offset")
+        self.L3Cache.changeCapacity(L3CacheSize)
+        self.L4Cache.changeCapacity(L4CacheSize)
+        
+        # キャッシュをクリア
+        print("clearing the cache")
+        self.L3Cache.clearCache()
+        self.L4Cache.clearCache()
+        
+        # 別スレッドで動いているぷりふぇっちゃーの設定を変更
+        self.L3Pref.InitializeSetting()
+        self.L4Pref.InitializeSetting()
 
         # 情報を出力
         print("restarting the system with the following setting:\n")
@@ -48,7 +57,7 @@ class HttpAPI:
         
         print("start prefetching")
 
-        # プリフェッチを開始
+        # # プリフェッチを開始
         self.L3Pref.startPrefetching()
         self.L4Pref.startPrefetching()
 

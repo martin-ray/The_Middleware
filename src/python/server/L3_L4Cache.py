@@ -93,6 +93,7 @@ class LRU_cache:
         with self.CacheLock:
             if key in self.cache:
                 # Move the accessed item to the end
+                print("kokokiterudesyo")
                 self.cache.move_to_end(key)
                 return self.cache[key]
         return None
@@ -129,8 +130,7 @@ class LRU_cache:
         print(keys)
 
     def clearCache(self):
-        self.cache = {}
-        self.order = []
+        self.cache = OrderedDict() 
 
     def changeCapacity(self,capacity):
         self.capacity = capacity
