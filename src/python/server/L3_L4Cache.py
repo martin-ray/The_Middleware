@@ -68,6 +68,11 @@ class LRU_cache:
         self.cache = {}
         self.order = []
 
+    def changeCapacity(self,capacity):
+        self.capacity = capacity
+
+
+
 class dynamic_cache:
     def __init__(self,size):
         self.size = size
