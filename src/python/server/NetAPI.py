@@ -1,12 +1,3 @@
-# すべてのリクエストはここを通ってなされます。
-# NetIFはL1も持ってるし、L2も持ってます。
-# まあ、こいつは、ただ、L1とL2からリクエストを受けて、そのリクエストをサーバに投げるってだけだな。
-# 戻ってくるデータは全部compressedされている。L1がリクエストしたら、それをdecompressするまでセットかな。
-# ただ、気になるのが、L1からのリクエストは緊急なわけです。L2はどんどんリクエスト送るけど、
-# L1のリクエストを優先する何か、仕組みが欲しいんですね。
-
-
-# dequeはスレッドセーフ
 from collections import deque
 import asyncio
 import numpy as np
@@ -17,17 +8,49 @@ from L3_L4Cache import LRU_cache
 from prefetcher import L3Prefetcher,L4Prefetcher
 
 class HttpAPI:
-    def __init__(self,L3CacheSize=2000,L4CacheSize=500,serverIp="http://localhost:8080"):
+    def __init__(self,L3CacheSize=2000,L4CacheSize=500,blockSize=256,serverIp="http://localhost:8080"):
         self.L3Cache = LRU_cache(L3CacheSize)
         self.L4Cache = LRU_cache(L4CacheSize)
         self.compressor = compressor(self.L3Cache)
         self.Slicer = Slicer()
         self.L4Pref = L4Prefetcher(L4Cache=self.L4Cache)
         self.L3Pref = L3Prefetcher(self.L3Cache, self.L4Cache, compressor=self.compressor, L4Prefetcher=self.L4Pref)
-        
-
-        
         self.sendQ = deque() # いる？
+        self.blockSize = blockSize
+
+    def reInit(self,L3CacheSize,L4CacheSize,blockSize,policy='LRU'):
+        self.blockSize = blockSize
+
+        # 別スレッドで走っているプリフェッチを停止
+        self.L3Pref.stop()
+        self.L4Pref.stop()
+
+        # キャッシュをクリア
+        self.L3Cache.clearCache()
+        self.L4Cache.clearCache()
+
+        # サイズを変更
+        self.L3Cache.changeCapacity(L3CacheSize)
+        self.L4Cache.changeCapacity(L4CacheSize)
+
+        # プリフェッチのサイズも変更
+        self.L3Pref.blockOffset = self.blockSize
+        self.L4Pref.blockOffset = self.blockSize
+        self.Slicer.changeBlockSize = self.blockSize
+
+        # 情報を出力
+        print("restarting the system with the following setting:\n")
+        print("L3Size:{}\nL4Size:{}\nblockSize:{}\nReplacementPolicy:{}\n".format
+              (self.L3Cache.capacity,
+               self.L4Cache.capacity,
+               self.blockSize,
+               "LRU for now"))
+        
+        print("start prefetching")
+
+        # プリフェッチを開始
+        self.L3Pref.startPrefetching()
+        self.L4Pref.startPrefetching()
 
     # 呼び出し側が、別スレッドで実行
     def get(self,blockId):
