@@ -92,19 +92,21 @@ class L3Prefetcher:
         self.prefetchedSet.add(blockId)
         self.Netif.send_req(blockId)
 
-    # ここでどういう風にプリフェッチポリシーを変えるかっていうのもかなり見ものではある
-    # なかなか気になるところですね。
-    def InformL3MissByAPI(self,blockId):
-        print("L3 Missed By API:{}\n".format(blockId))
+    # ここでどういう風にプリフェッチポリシーを変えるかというのもなかなか見ものであるところです
+    def InformL3Hit(self,blockId):
+        print("L3 hit ! nice!")
+        pass
+
+    def InformL3MissAndL4Hit(self,blockId):
+        print("L3Miss and L4 Hit")
+    
+    def InformL3MissAndL4Miss(self,blockId):
+        print("L3 Missed and L4 Miss:{}\n".format(blockId))
         # TODO 何かしらのプリフェッチポリシーの変更を加える必要
         pass
 
     def InformL4MissByPref(self,blockId):
         print("L3 Prefetcher missed L4 and brought from disk:{}\n",blockId)
-
-    def InformL4MissByAPI(self,blockId):
-        print("the data was catched in L2: {}\n".format(blockId))
-        pass
 
     
     async def fetchLoop(self):
@@ -254,6 +256,7 @@ class L4Prefetcher:
         self.stop_thread = False
         self.thread = threading.Thread(target=self.thread_func)
         self.thread.start()
+        self.enqueue_first_blockId()
         
 
     def stop(self):
