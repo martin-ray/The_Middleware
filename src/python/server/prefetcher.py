@@ -16,13 +16,14 @@ from slice import Slicer
 
 # L3キャッシュとL4キャッシュプリふぇっちゃで同じスライサーを共有すると、なぜか片方が全く取れなくなるという現象に遭遇
 class L3Prefetcher:
-    def __init__(self,L3Cache,L4Cache,compressor,L4Prefetcher, blockOffset=256) -> None:
+    def __init__(self,L3Cache,L4Cache,compressor,L4Prefetcher,dataDim, blockOffset=256) -> None:
         # ToleranceArray
         self.Tols = [0.0001,0.001,0.01,0.1,0.2,0.3,0.4,0.5]
-        self.maxTimestep = 1024
-        self.maxX = 1024
-        self.maxY = 1024
-        self.maxZ = 1024
+        self.dataDim = dataDim
+        self.maxTimestep = dataDim[0]
+        self.maxX = dataDim[1]
+        self.maxY = dataDim[2]
+        self.maxZ = dataDim[3]
         self.blockOffset = blockOffset
         self.L3Cache = L3Cache
         self.L4Cache = L4Cache
@@ -159,7 +160,7 @@ class L3Prefetcher:
 
 # TODO 継承
 class L4Prefetcher:
-    def __init__(self,L4Cache):
+    def __init__(self,L4Cache,dataDim):
         self.L4Cache = L4Cache
         self.Slicer = Slicer()
         self.Tols = [0.0001,0.001,0.01,0.1,0.2,0.3,0.4,0.5]
@@ -172,6 +173,7 @@ class L4Prefetcher:
         self.prefetchedSet = set() # プリフェッチしたセット
         self.prefetch_q = deque()
         self.stop_thread = False
+        self.dataDim = dataDim
 
         # フェッチループ起動
         if self.L4Cache.capacity == 0:

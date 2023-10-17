@@ -10,7 +10,11 @@ class Slicer:
         self.blockOffset = blockOffset
         self.file = h5py.File(filename, 'r')
         self.dataset = self.file['data']
-        print(self.dataset.shape)
+        self.timesteps = self.dataset.shape[0]
+        self.xMax = self.dataset.shape[1]
+        self.yMax = self.dataset.shape[2]
+        self.zMax = self.dataset.shape[3]
+        self.printDataInfo()
 
     # Access specific elements in the concatenated array
     def access_array_element(self,timestep, x, y, z):
@@ -39,14 +43,19 @@ class Slicer:
     def changeBlockSize(self,blockSize):
         self.blockOffset = blockSize
 
-
+    def printDataInfo(self):
+        print("##### Row data INFO #####")
+        print("timesteps:{}\nx:{}\ny:{}\nz:{}\n"
+              .format(self.timesteps,self.xMax,self.yMax,self.zMax))
+        
+    def getDataDim(self):
+        return self.dataset.shape
+    
 if __name__ == "__main__":
     slicer = Slicer()
     original = slicer.slice_single_step(1, 0, 100, 0, 100, 0, 100)
     print(original.shape)
     print(type(original))
-
-
     tol = 0.1
 
     print("original=",original.nbytes,"bytes")

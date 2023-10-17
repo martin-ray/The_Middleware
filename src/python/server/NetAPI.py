@@ -9,12 +9,13 @@ from prefetcher import L3Prefetcher,L4Prefetcher
 
 class HttpAPI:
     def __init__(self,L3CacheSize=500,L4CacheSize=250,blockSize=256,serverIp="http://localhost:8080"):
+        self.Slicer = Slicer()
+        self.DataDim = self.Slicer.getDataDim()
         self.L3Cache = LRU_cache(L3CacheSize)
         self.L4Cache = LRU_cache(L4CacheSize)
         self.compressor = compressor(self.L3Cache)
-        self.Slicer = Slicer()
-        self.L4Pref = L4Prefetcher(L4Cache=self.L4Cache)
-        self.L3Pref = L3Prefetcher(self.L3Cache, self.L4Cache, compressor=self.compressor, L4Prefetcher=self.L4Pref)
+        self.L4Pref = L4Prefetcher(self.L4Cache,dataDim=self.DataDim)
+        self.L3Pref = L3Prefetcher(self.L3Cache, self.L4Cache, compressor=self.compressor,dataDim=self.DataDim,L4Prefetcher=self.L4Pref)
         self.sendQ = deque() # いる？
         self.blockSize = blockSize
 
