@@ -8,19 +8,24 @@ from NetAPI import HttpAPI
 # Define the request handler class
 class MyRequestHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, HttpApi, *args, **kwargs):
-        self.HttpApi = HttpApi
+
+        # 設定変更可能
+        self.HttpAPI = HttpApi
         super().__init__(*args, **kwargs)
 
     def do_GET(self):
         # Access the custom variable in your GET request handling
         msgType = (self.headers.get('type'))
+        print(self.headers)
         if msgType == 'init' :
             blockOffset = int(self.headers.get('offset'))
             L3Size = int(self.headers.get('L3Size'))
-            L4Size = int(self.headers.get('L4Suze'))
+            L4Size = int(self.headers.get('L4Size'))
             Policy = self.headers.get('Policy')
             FileName = self.headers.get('FileName') # FileName to save the file in
-            HttpAPI.reInit(blockSize=blockOffset,L3CacheSize=L3Size,L4CacheSize=L4Size,policy=Policy)
+            self.HttpAPI.reInit(blockSize=blockOffset,L3CacheSize=L3Size,L4CacheSize=L4Size,policy=Policy)
+            self.send_response(200)
+            self.end_headers()
 
         elif msgType == 'BlockReq':
             tol = float(self.headers.get('tol'))
@@ -29,8 +34,9 @@ class MyRequestHandler(http.server.SimpleHTTPRequestHandler):
             y = int(self.headers.get('y'))
             z = int(self.headers.get('z'))
             blockId = (tol,timestep,x,y,z)
+            blockId = self.HttpAPI.adjustBlockId(blockId)
             print("get : ",blockId)
-            compressed = self.HttpApi.get(blockId)
+            compressed = self.HttpAPI.get(blockId)
             self.send_response(200)
             # self.send_header("Content-type", "application/octet-stream")  # Set the appropriate content type
             self.end_headers()
