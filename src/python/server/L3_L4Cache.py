@@ -93,7 +93,6 @@ class LRU_cache:
         with self.CacheLock:
             if key in self.cache:
                 # Move the accessed item to the end
-                print("kokokiterudesyo")
                 self.cache.move_to_end(key)
                 return self.cache[key]
         return None
