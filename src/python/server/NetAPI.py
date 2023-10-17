@@ -65,17 +65,29 @@ class HttpAPI:
     def get(self,blockId):
         tol = blockId[0]
         L3data = self.L3Cache.get(blockId)
-        if L3data == None:
+        if L3data is None:
             L4data = self.L4Cache.get(blockId)
-            if L4data == None:
+            if L4data is None:
+                self.L3Pref.InformL3MissAndL4Miss(blockId)
+                self.L4Pref.InformL3MissAndL4Miss(blockId) # プリフェッチポリシーの変更はプリふぇっちゃー側で変更してください
                 original = self.Slicer.sliceData(blockId)
                 compressed = self.compressor.compress(original,tol)
-                # ここで、どうにかして、ミスしていることを各コンポーネントに伝える必要があります。
                 return compressed
             else:
+                self.L3Pref.InformL3MissAndL4Hit(blockId)
+                self.L4Pref.InformL3MissAndL4Hit(blockId)
                 return self.compressor.compress(L4data,tol)
         else:
+            self.L3Pref.InformL3Hit(blockId)
+            self.L4Pref.InformL3Hit(blockId)
             return L3data
+        
+    # tuple is imutable
+    def adjustBlockId(self,blockId):
+        blockId2 = blockId[2]//self.blockSize*self.blockSize
+        blockId3 = blockId[3]//self.blockSize*self.blockSize
+        blockId4 = blockId[4]//self.blockSize*self.blockSize
+        return (blockId[0],blockId[1],blockId2,blockId3,blockId4)
 
 class NetAPIWebsock:
     def __init__(self,L3Cache,serverIp="http://localhost:8080"):

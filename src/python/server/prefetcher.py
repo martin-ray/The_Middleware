@@ -94,7 +94,7 @@ class L3Prefetcher:
 
     # ここでどういう風にプリフェッチポリシーを変えるかというのもなかなか見ものであるところです
     def InformL3Hit(self,blockId):
-        print("L3 hit ! nice!")
+        print("L3 hit ! nice! From L3 prefetcher")
         pass
 
     def InformL3MissAndL4Hit(self,blockId):
@@ -111,8 +111,6 @@ class L3Prefetcher:
     
     async def fetchLoop(self):
         while not self.stop_thread:
-            self.L3Cache.printInfo()
-            self.L4Cache.printInfo()
             if (not self.prefetch_q_empty()) and (len(self.L3Cache.cache) < self.L3Cache.capacity):
                 nextBlockId = self.pop_front()
                 original = self.L4Cache.get(nextBlockId)
@@ -130,7 +128,7 @@ class L3Prefetcher:
                     compressed = self.compressor.compress(d,tol)
                     self.L3Cache.put(nextBlockId,compressed)
                 else:
-                    print("L4 HIT! nice!",nextBlockId)
+                    print("L4 HIT! when L3 Prefetching from L4",nextBlockId)
                     tol = nextBlockId[0]
                     compressed = self.compressor.compress(original,tol)
                     self.L3Cache.put(nextBlockId,compressed)
@@ -231,11 +229,20 @@ class L4Prefetcher:
         firstBlock = (0.1, 0, 0 ,0 ,0 )
         self.prefetch_q.append(firstBlock)
     
-    def letKnowCenterPoint(self,blockId):
+    def InformL3Hit(self,blockId):
+        print("L3 hit! nice! from L4 prefetcher")
         pass
 
-    def InformL3MissByUser(self,blockId):
-        print("User missed to catch in L1: {}\n".format(blockId))
+    def InformL3MissAndL4Hit(self,blockId):
+        print("L3Miss and L4 Hit")
+    
+    def InformL3MissAndL4Miss(self,blockId):
+        print("L3 Miss and L4 Miss:{}\n".format(blockId))
+        # TODO 何かしらのプリフェッチポリシーの変更を加える必要
+        pass
+
+    def InformL4MissByPref(self,blockId):
+        print("L3 Prefetcher missed L4 and brought from disk:{}\n",blockId)
 
     def clearPrifetchingQ(self):
         self.prefetch_q = deque()
