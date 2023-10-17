@@ -98,6 +98,8 @@ class LRU_cache:
         return None
 
     def put(self, key, value):
+        if len(self.cache) == 0:
+            return
         with self.CacheLock:
             if key in self.cache:
             # If the key already exists, move it to the end
