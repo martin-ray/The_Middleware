@@ -5,7 +5,7 @@ import _mgard as mgard
 
 class Slicer:
     # default 引数
-    def __init__(self,blockOffset,filename="/scratch/aoyagir/step1_500_test.h5") -> None:
+    def __init__(self,blockOffset=256,filename="/scratch/aoyagir/step1_500_test.h5") -> None:
         self.filename = filename
         self.blockOffset = blockOffset
         self.file = h5py.File(filename, 'r')
@@ -35,6 +35,9 @@ class Slicer:
         y = blockId[3]
         z = blockId[4]
         return self.slice_single_step(t,x,x+self.blockOffset,y,y+self.blockOffset,z,z+self.blockOffset)
+    
+    def changeBlockSize(self,blockSize):
+        self.blockOffset = blockSize
 
 
 if __name__ == "__main__":
