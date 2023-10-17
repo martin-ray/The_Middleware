@@ -38,10 +38,16 @@ class Slicer:
         x = blockId[2]
         y = blockId[3]
         z = blockId[4]
+        print("silcing",x,x+self.blockOffset,y,y+self.blockOffset,z,z+self.blockOffset)
         return self.slice_single_step(t,x,x+self.blockOffset,y,y+self.blockOffset,z,z+self.blockOffset)
     
     def changeBlockSize(self,blockSize):
+        print("changin block size from {} to {}".format(self.blockOffset,blockSize))
         self.blockOffset = blockSize
+    
+    def printBlocksize(self):
+        print(self.blockOffset)
+
 
     def printDataInfo(self):
         print("##### Row data INFO #####")

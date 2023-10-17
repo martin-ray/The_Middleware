@@ -6,16 +6,17 @@ from slice import Slicer
 from compressor import compressor
 from L3_L4Cache import LRU_cache
 from prefetcher import L3Prefetcher,L4Prefetcher
+import time
 
 class HttpAPI:
     def __init__(self,L3CacheSize=500,L4CacheSize=250,blockSize=256,serverIp="http://localhost:8080"):
-        self.Slicer = Slicer()
+        self.Slicer = Slicer(blockOffset=blockSize)
         self.DataDim = self.Slicer.getDataDim()
-        self.L3Cache = LRU_cache(L3CacheSize)
-        self.L4Cache = LRU_cache(L4CacheSize)
+        self.L3Cache = LRU_cache(L3CacheSize,offsetSize=blockSize)
+        self.L4Cache = LRU_cache(L4CacheSize,offsetSize=blockSize)
         self.compressor = compressor(self.L3Cache)
-        self.L4Pref = L4Prefetcher(self.L4Cache,dataDim=self.DataDim)
-        self.L3Pref = L3Prefetcher(self.L3Cache, self.L4Cache, compressor=self.compressor,dataDim=self.DataDim,L4Prefetcher=self.L4Pref)
+        self.L4Pref = L4Prefetcher(self.L4Cache,dataDim=self.DataDim,blockSize=blockSize)
+        self.L3Pref = L3Prefetcher(self.L3Cache, self.L4Cache, compressor=self.compressor,dataDim=self.DataDim,L4Prefetcher=self.L4Pref,blockOffset=blockSize)
         self.sendQ = deque() # いる？
         self.blockSize = blockSize
 
@@ -29,10 +30,17 @@ class HttpAPI:
         self.L3Pref.stop()
         self.L4Pref.stop()
 
+        print("waiting for the threads to finish...")
+        time.sleep(10)
+
         # プリフェッチのサイズも変更
-        self.L3Pref.blockOffset = self.blockSize
-        self.L4Pref.blockOffset = self.blockSize
-        self.Slicer.changeBlockSize = self.blockSize
+        self.L3Cache.changeBlockoffset(self.blockSize)
+        self.L4Cache.changeBlockoffset(self.blockSize)
+
+        # スライサにもブロックサイズの変更を伝達 (CAUTION!!) L3prefetcherとL4Prefethcerは別々でSlicerインスタンスを持っているので、それもやらないとだめです！！！
+        self.Slicer.changeBlockSize(self.blockSize) 
+        print("changed block size in slicer!")
+        self.Slicer.printBlocksize()
 
         # サイズを変更
         print("changin the cache size and block offset")
@@ -45,8 +53,8 @@ class HttpAPI:
         self.L4Cache.clearCache()
         
         # 別スレッドで動いているぷりふぇっちゃーの設定を変更
-        self.L3Pref.InitializeSetting()
-        self.L4Pref.InitializeSetting()
+        self.L3Pref.InitializeSetting(self.blockSize)
+        self.L4Pref.InitializeSetting(self.blockSize)
 
         # 情報を出力
         print("restarting the system with the following setting:\n")

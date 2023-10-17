@@ -98,7 +98,7 @@ class LRU_cache:
         return None
 
     def put(self, key, value):
-        if len(self.cache) == 0:
+        if (self.capacity) == 0:
             return
         with self.CacheLock:
             if key in self.cache:

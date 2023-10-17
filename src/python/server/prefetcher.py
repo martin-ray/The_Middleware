@@ -34,22 +34,22 @@ class L3Prefetcher:
         self.gonnaPrefetchSet = set()
         self.prefetchedSet = set()
         self.prefetch_q = deque() # blocks going to get
-        
+        self.thread = None
+
         # スレッドを止めるためのフラグ
         self.stop_thread = False
 
-        # フェッチループを起動。これで、L3にはたまらない。
-        # つまり、リクエストされた各々のスレッドはL3では必ずキャッシュミスを起こし
-        # L4でキャッシュヒットする確率が高くなるって感じですね。
+        # フェッチループを起動
         if self.L3Cache.capacity == 0:
+            # L3キャッシュが0の時は、L3Prefetcherはスタートしないと
             pass
         else :
             print("start L3 prefetcher")
             self.thread = threading.Thread(target=self.thread_func)
             self.thread.start()
-
-        # 最初のブロックを投下
-        self.enqueue_first_blockId()
+            # 最初のブロックを投下
+            self.enqueue_first_blockId()
+        
 
     def enque_neighbor_blocks(self,centerBlock):
         tol = centerBlock[0] 
@@ -64,7 +64,7 @@ class L3Prefetcher:
                 for dy in [-self.blockOffset, 0, self.blockOffset]:
                     for dz in [-self.blockOffset, 0, self.blockOffset]:
                         if (self.gonnaPrefetchSet.__contains__((tol,timestep+dt, x+dx, y+dy, z+dz))
-                            or (timestep+dt < 0) or (timestep+dt > self.maxTimestep) 
+                            or (timestep+dt < 0) or (timestep+dt >= self.maxTimestep) 
                             or (x+dx < 0) or (x+dx >= self.maxX)
                             or (y+dy < 0) or (y+dy >= self.maxY)
                             or (z+dz < 0) or (z+dz >= self.maxZ)):
@@ -88,6 +88,7 @@ class L3Prefetcher:
     def enqueue_first_blockId(self):
         firstBlock = (0.1, 0, 0 ,0 ,0 )
         self.prefetch_q.append(firstBlock)
+        self.gonnaPrefetchSet.add(firstBlock)
 
     def fetch(self,blockId):
         self.prefetchedSet.add(blockId)
@@ -112,6 +113,9 @@ class L3Prefetcher:
     
     async def fetchLoop(self):
         while not self.stop_thread:
+            print("L3 cache:")
+            self.L3Cache.printInfo()
+            self.L3Cache.printAllKeys()
             if (not self.prefetch_q_empty()) and (len(self.L3Cache.cache) < self.L3Cache.capacity):
                 nextBlockId = self.pop_front()
                 original = self.L4Cache.get(nextBlockId)
@@ -122,7 +126,8 @@ class L3Prefetcher:
                     except Exception as e:
                         pass
                     d = self.Slicer.sliceData(nextBlockId)
-
+                    print("nextBlockId=",nextBlockId)
+                    print("blocks size=",d.nbytes)
                     # write to L4 also
                     self.L4Cache.put(nextBlockId,d)
                     tol = nextBlockId[0]
@@ -140,17 +145,26 @@ class L3Prefetcher:
     
     def startPrefetching(self):
         self.stop_thread = False
-        self.thread = threading.Thread(target=self.thread_func)
-        self.thread.start()
-        self.enqueue_first_blockId()
+        if self.L3Cache.capacity > 0:
+            self.thread = threading.Thread(target=self.thread_func)
+            self.thread.start()
+            self.enqueue_first_blockId()
+            print("restarted L3 prefetcher!")
+        else :
+            print("L3 cache size is 0. So L3 prefetcher is not starting")
 
     def stop(self):
         self.stop_thread = True
 
-    def InitializeSetting(self):
+    def InitializeSetting(self,blockOffset):
+        self.Slicer.changeBlockSize(blockOffset)
         self.prefetchedSet = set()
         self.gonnaPrefetchSet = set()
         self.prefetch_q = deque()
+        self.blockOffset = blockOffset
+
+    def changeBlockOffset(self,blockOffset):
+        self.blockOffset = blockOffset
 
     def thread_func(self):
         loop = asyncio.new_event_loop()
@@ -160,20 +174,21 @@ class L3Prefetcher:
 
 # TODO 継承
 class L4Prefetcher:
-    def __init__(self,L4Cache,dataDim):
+    def __init__(self,L4Cache,dataDim,blockSize):
         self.L4Cache = L4Cache
         self.Slicer = Slicer()
         self.Tols = [0.0001,0.001,0.01,0.1,0.2,0.3,0.4,0.5]
-        self.maxTimestep = 1024
-        self.maxX = 1024
-        self.maxY = 1024
-        self.maxZ = 1024
-        self.blockOffset = 256
+        self.dataDim = dataDim
+        self.maxTimestep = dataDim[0]
+        self.maxX = dataDim[1]
+        self.maxY = dataDim[2]
+        self.maxZ = dataDim[3]
+        self.blockOffset = blockSize
         self.gonnaPrefetchSet = set() # プリフェッチしに行くセット
         self.prefetchedSet = set() # プリフェッチしたセット
         self.prefetch_q = deque()
         self.stop_thread = False
-        self.dataDim = dataDim
+        self.thread = None
 
         # フェッチループ起動
         if self.L4Cache.capacity == 0:
@@ -182,9 +197,8 @@ class L4Prefetcher:
             print("start L4 prefetcher")
             self.thread = threading.Thread(target=self.thread_func)
             self.thread.start()
+            self.enqueue_first_blockId()
 
-        # L4に最初のものを円キューしたわけですよ。
-        self.enqueue_first_blockId()
 
 
 # ここのforループの順番を変えることで、時間なのか、空間なのか、どっちの情報を優先的に取ってくるのかを決められる。どうするか？
@@ -202,7 +216,7 @@ class L4Prefetcher:
                 for dy in [-self.blockOffset, 0, self.blockOffset]:
                     for dz in [-self.blockOffset, 0, self.blockOffset]:
                         if (self.gonnaPrefetchSet.__contains__((tol,timestep+dt, x+dx, y+dy, z+dz))
-                            or (timestep+dt < 0) or (timestep+dt > self.maxTimestep) 
+                            or (timestep+dt < 0) or (timestep+dt >= self.maxTimestep) 
                             or (x+dx < 0) or (x+dx >= self.maxX)
                             or (y+dy < 0) or (y+dy >= self.maxY)
                             or (z+dz < 0) or (z+dz >= self.maxZ)):
@@ -251,6 +265,9 @@ class L4Prefetcher:
 
     async def fetchLoop(self):
         while not self.stop_thread:
+            print("L4 cache:")
+            self.L4Cache.printInfo()
+            self.L4Cache.printAllKeys()
             if (not self.prefetch_q_empty()) and (len(self.L4Cache.cache) < self.L4Cache.capacity):
                 nextBlockId = self.pop_front()
                 data = self.Slicer.sliceData(nextBlockId)
@@ -263,18 +280,26 @@ class L4Prefetcher:
 
     def startPrefetching(self):
         self.stop_thread = False
-        self.thread = threading.Thread(target=self.thread_func)
-        self.thread.start()
-        self.enqueue_first_blockId()
+        if self.L4Cache.capacity > 0:
+            self.thread = threading.Thread(target=self.thread_func)
+            self.thread.start()
+            self.enqueue_first_blockId()
+            print("restarted L4 prefetcher!")
+        else :
+            print("L4 cache size is 0. So L4 prefetcher is not starting")
         
+    def changeBlockOffset(self,blockOffset):
+        self.blockOffset = blockOffset
 
     def stop(self):
         self.stop_thread = True
 
-    def InitializeSetting(self):
+    def InitializeSetting(self,blockOffset):
+        self.Slicer.changeBlockSize(blockOffset)
         self.prefetchedSet = set()
         self.gonnaPrefetchSet = set()
         self.prefetch_q = deque()
+        self.blockOffset = blockOffset
 
     def thread_func(self):
         loop = asyncio.new_event_loop()
