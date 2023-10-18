@@ -9,7 +9,7 @@ from prefetcher import L3Prefetcher,L4Prefetcher
 import time
 
 class HttpAPI:
-    def __init__(self,L3CacheSize=500,L4CacheSize=250,blockSize=256,serverIp="http://localhost:8080"):
+    def __init__(self,L3CacheSize=100,L4CacheSize=200,blockSize=1024,serverIp="http://localhost:8080"):
         self.Slicer = Slicer(blockOffset=blockSize)
         self.DataDim = self.Slicer.getDataDim()
         self.L3Cache = LRU_cache(L3CacheSize,offsetSize=blockSize)
@@ -67,8 +67,10 @@ class HttpAPI:
         print("start prefetching")
 
         # # プリフェッチを開始
-        self.L3Pref.startPrefetching()
         self.L4Pref.startPrefetching()
+        time.sleep(0.1) # これをやらないとL4のプリフェッチが始まらない。L3に消されちゃって (おそらく)
+        self.L3Pref.startPrefetching()
+
 
     # 呼び出し側が、別スレッドで実行
     def get(self,blockId):
