@@ -14,7 +14,7 @@ class Recomposer:
         zStart = xyzRange[4]
         zEnd = xyzRange[5]
 
-        # create a empty block to fill in
+        # create a empty block to fill in プラス1いらなくね？
         synthesized_block = np.zeros((xEnd - xStart + 1), (yEnd - yStart + 1), (zEnd - zStart + 1)) 
         
         # Determine the dimensions of the synthesized block based on the maximum blockId

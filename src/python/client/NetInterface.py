@@ -19,9 +19,10 @@ class NetIF:
         self.sendQ = deque() 
         self.URL = serverIp
         # ここで、送信スレッドを起動する
-        self.thread = threading.Thread(target=self.thread_func(self.sendLoop))
+        self.thread = threading.Thread(target=self.thread_func)
         self.thread.start()
-
+    
+    
     # 末尾に追加
     def send_req(self,blockId):
         self.sendQ.append(blockId)
@@ -31,11 +32,11 @@ class NetIF:
 
         header = {
             'type':'BlockReq',
-            'tol':BlockId[0],
-            'timestep':BlockId[1],
-            'x': BlockId[2],
-            'y': BlockId[3],
-            'z': BlockId[4]
+            'tol':str(BlockId[0]),
+            'timestep':str(BlockId[1]),
+            'x': str(BlockId[2]),
+            'y': str(BlockId[3]),
+            'z': str(BlockId[4])
         }
 
         response = requests.get(self.URL,headers=header)
@@ -47,11 +48,36 @@ class NetIF:
         else:
             return False
     
-    def firstContact(self,BlockOffset):
+    def reInitRequest(self,BlockOffset,L3Size,L4Size):
+        # 送信キューのクリア
+        self.sendQ.clear()
+
+        # 諸々変更する必要があります。サーバサイドと同じで。
         header = {
-            'type':'FirstContact',
-            'offset':BlockOffset
+            'type':'init',
+            'offset':str(BlockOffset),
+            'L3' : str(L3Size),
+            'L4' : str(L4Size),
+            'Policy': 'LRU',
+            'FileName':'test'
         }
+        response = requests.get(self.URL,headers=header)
+        return response.status_code
+    
+    def firstContact(self,BlockOffset,L3Size,L4Size):
+        # 送信キューのクリア
+        self.sendQ.clear()
+
+        # 諸々変更する必要があります。サーバサイドと同じで。
+        header = {
+            'type':'init',
+            'offset':str(BlockOffset),
+            'L3Size' : str(L3Size),
+            'L4Size' : str(L4Size),
+            'Policy': 'LRU',
+            'FileName':'test'
+        }
+        print("sending",header)
         response = requests.get(self.URL,headers=header)
         return response.status_code
     
@@ -64,11 +90,12 @@ class NetIF:
                 BlockId = self.sendQ.popleft()
                 
                 header = {
-                    'tol':BlockId[0],
-                    'timestep':BlockId[1],
-                    'x': BlockId[2],
-                    'y': BlockId[3],
-                    'z': BlockId[4]
+                    'type':'BlockReq',
+                    'tol':str(BlockId[0]),
+                    'timestep':str(BlockId[1]),
+                    'x': str(BlockId[2]),
+                    'y': str(BlockId[3]),
+                    'z': str(BlockId[4])
                 }
 
                 response = requests.get(self.URL,headers=header)
@@ -83,3 +110,6 @@ class NetIF:
     # TODO websocketのついか
     async def sendLoopSocket(websocket):
         pass
+
+    # TODO gridFTPの追加?
+    # TODO 時間があったら、いい感じの送信プロトコルを追加。なんかいいやつあるかなー。

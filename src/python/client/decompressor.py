@@ -13,9 +13,8 @@ class Decompressor:
 
     def decompress_req(self,blockId,compressed):
         decompressed = mgard.decompress(compressed).astype(np.float32)
-        with self.L1Cache.CacheLock:
-            self.L1Cache.put(blockId,decompressed)
-            return
+        self.L1Cache.put(blockId,decompressed)
+        return
     
     def decompress_req_urgent(self,blockId,compressed):
         decompressed = mgard.decompress(compressed).astype(np.float32)

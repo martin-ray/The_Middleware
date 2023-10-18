@@ -1,6 +1,7 @@
 import numpy as np
 from collections import defaultdict ## thread safe dictionary
 import threading
+from collections import OrderedDict
 
 # 最後にリクエストされた点の中心部分を常に追いかける必要がある気がします。
 class TSDynamic_cache: # 自分で自分のロックを持っているので、スレッドセーフです
@@ -44,8 +45,8 @@ class TSDynamic_cache: # 自分で自分のロックを持っているので、�
 
 # スレッドセーフになってる
 class LRU_cache:
-    def __init__(self, capacity=100, offsetSize=256, decompressor=None): # offsetSize知る必要ある？
-        self.capacity = capacity
+    def __init__(self, capacity, offsetSize=256):
+        self.capacity = capacity ## block that can be store
         self.usedSize = 0
         self.usedSizeInMB = 0
         self.SizeOfFloat = 4
@@ -53,54 +54,66 @@ class LRU_cache:
         self.BlockX = offsetSize
         self.BlockY = offsetSize
         self.BlockZ = offsetSize
-        self.OneBlockSize = offsetSize**3*4/1024/1024
-        self.capacityInMB = offsetSize**3*4*capacity/1024/1024
-        self.blocksize = self.SizeOfFloat*self.BlockX*self.BlockY*self.BlockZ
-        self.cache = {}  # Dictionary to store cached items
-        self.order = []  # List to maintain the order of items
+        self.OneBlockSize = offsetSize ** 3 * self.SizeOfFloat
+        self.capacityInMB = offsetSize ** 3 * self.SizeOfFloat * capacity / 1024 / 1024
+        self.cache = OrderedDict()  # Use OrderedDict to maintain order
         self.CacheLock = threading.Lock()
         self.printInitInfo()
         self.printInfo()
 
-
-    # key = (tol,timestep,x,y,z) x,y,zはブロックのサイズで割れる値です。
     def get(self, key):
         with self.CacheLock:
             if key in self.cache:
-                # Move the accessed item to the end (most recently used)
-                self.order.remove(key)
-                self.order.append(key)
+                # Move the accessed item to the end
+                self.cache.move_to_end(key)
                 return self.cache[key]
-            return None
+        return None
 
     def put(self, key, value):
+        if (self.capacity) == 0:
+            return
         with self.CacheLock:
-            maxCapacityFlag = False
             if key in self.cache:
-                # Update the value and move the item to the end
-                self.order.remove(key)
+            # If the key already exists, move it to the end
+                self.cache.move_to_end(key)
             elif len(self.cache) >= self.capacity:
-                # Evict the least recently used item
-                oldest_key = self.order.pop(0)
-                self.cache.pop(oldest_key)
-                self.usedSize = cache_capacity
-                maxCapacityFlag = True
+                # Evict the least recently used item (first item in OrderedDict)
+                self.cache.popitem(last=False)
+                print("cache is full! replacing!")
             self.cache[key] = value
-            self.order.append(key)
-            if not maxCapacityFlag:
-                self.usedSize = self.usedSize + 1
-                self.usedSizeInMB = self.usedSizeInMB + self.OneBlockSize
+
+    def getUsedSize(self):
+        return len(self.cache)
+    
+    def getUsedSizeInMb(self):
+        return self.OneBlockSize*len(self.cache)/1024/1024
+    
 
     def printInitInfo(self):
-        print("############ cache initial info ###########\n")
-        print("capacity = {}\nblockOffset = {}\n,capacityInMb = {}".format(self.capacity,self.offsetSize,self.capacity))
+        print("############ cache initial info ###########")
+        print("capacity = {}\nblockOffset = {}\ncapacityInMb = {}\n".format(self.capacity,self.offsetSize,self.capacity))
 
     def printInfo(self):
-        print("############ cache info ###########\n")
-        print("usedSize/capacity = {}/{}\nusedSizeInMB/capacityInMb = {}/{}".format(
-            self.usedSize,self.capacity,
-            self.usedSizeInMB,self.capacityInMB)
+        print("usedSizeInMB/capacityInMb = {}/{}\n".format(
+            self.getUsedSizeInMb(),self.capacityInMB)
             )
+        
+    def printAllKeys(self):
+        keys = self.cache.keys()
+        print(keys)
+
+    def clearCache(self):
+        self.cache = OrderedDict() 
+
+    def changeCapacity(self,capacity):
+        self.capacity = capacity
+        self.capacityInMB = self.offsetSize ** 3 * self.SizeOfFloat * capacity / 1024 / 1024
+        self.OneBlockSize = self.offsetSize ** 3 * self.SizeOfFloat
+
+    def changeBlockoffset(self,blockOffset):
+        self.offsetSize = blockOffset
+        self.OneBlockSize = self.offsetSize ** 3 * self.SizeOfFloat
+        self.capacityInMB = self.offsetSize ** 3 * self.SizeOfFloat * self.capacity / 1024 / 1024
 
 # Example usage and test
 if __name__ == "__main__":

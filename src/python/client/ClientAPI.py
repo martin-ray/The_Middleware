@@ -6,36 +6,99 @@ from Prefetcher import L1Prefetcher
 from L1_L2Cache import LRU_cache
 from recomposer import Recomposer
 import threading
-
+import time
+import concurrent.futures
 
 class ClientAPI:
-    def __init__(self):
-        self.decompressor = Decompressor()
-        
+    # L1は絶対にONにしないといけない?L4も絶対にONにしないといけない? そんなことない
+    def __init__(self,L1Size, L2Size, L3Size, L4Size,blockSize=256):
+
         # 実験パラメータ
-        self.L1CacheSize = 100
-        self.L2CacheSize = 1000
-        self.blockOffset = 256
+        self.L1CacheSize = L1Size
+        self.L2CacheSize = L2Size
+        self.L3CacheSize = L3Size
+        self.L4CacheSize = L4Size
+        self.blockOffset = blockSize
         
         # 各コンポーネント
-        self.L1Cache = LRU_cache(self.L1CacheSize,self.blockOffset,decompressor=self.decompressor)
+        self.L1Cache = LRU_cache(self.L1CacheSize,self.blockOffset)
         self.L2Cache = LRU_cache(self.L2CacheSize,self.blockOffset)
+        self.decompressor = Decompressor(L1Cache=self.L1Cache)
+
         # sendLoop threadはconstructorの中で起動
         self.netIF = NetIF(L2Cache=self.L2Cache)
-        # fetchLoop threadはconstructorの中で起動
-        self.L1pref = L1Prefetcher(self.decompressor,L2Cache=self.L2Cache)
-        # fetchLoop threadはconstructorの中で起動
-        self.L2pref = L2Prefetcher(L2Cache=self.L2Cache,NetIF=self.netIF)
-        self.recomposer = Recomposer()
 
+        # fetchLoop threadはconstructorの中で起動
+        self.L2pref = L2Prefetcher(L2Cache=self.L2Cache,Netif=self.netIF) 
+
+        # fetchLoop threadはconstructorの中で起動
+        self.L1pref = L1Prefetcher(self.decompressor,L1Cache=self.L1Cache,L2Cache=self.L2Cache,offsetSize=self.blockOffset,Netif=self.netIF)
+        
+        self.recomposer = Recomposer(blockOffset=self.blockOffset)
+
+        # スレッド数
+        self.thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=8)
+        
         # 初期コンタクト。ワンフェッチでのデータサイズを規定
-        response_code = self.netIF.firstContact(self.blockOffset)
+        response_code = self.netIF.firstContact(BlockOffset=blockSize,L3Size=L3Size,L4Size=L4Size)
         if (response_code != 200):
-            print("server error")
+            print("initialization failed in server.")
             exit(0)
+        else:
+            print("initalization success!")
 
-        # 必要なループ達(送信ループ、L2フェッチループ、L1フェッチループ)は既に別スレッドで実行済
-    
+    def reInit(self,L1CacheSize,L2CacheSize,L3CacheSize,L4CacheSize,blockSize,policy='LRU'):
+        self.blockSize = blockSize
+
+        # 別スレッドで走っているプリフェッチを停止
+        # RuntimeError: threads can only be started onceというエラーをいただきましたので、
+        # 止めずにやる / 新しくスレッドを作るのにたくですね。
+        print("stopping the prefetch thread")
+        self.L1Pref.stop()
+        self.L2Pref.stop()
+
+        # プリフェッチのサイズも変更
+        self.L1Cache.changeBlockoffset(self.blockSize)
+        self.L2Cache.changeBlockoffset(self.blockSize)
+
+        # サイズを変更
+        print("changin the cache size and block offset")
+        self.L1Cache.changeCapacity(L1CacheSize)
+        self.L2Cache.changeCapacity(L2CacheSize)
+        self.L1CacheSize = L1CacheSize
+        self.L2CacheSize = L2CacheSize
+        self.L3CacheSize = L3CacheSize
+        self.L4CacheSize = L4CacheSize
+        
+        # キャッシュをクリア
+        print("clearing the cache")
+        self.L1Cache.clearCache()
+        self.L2Cache.clearCache()
+        
+        # 別スレッドで動いているぷりふぇっちゃーの設定を変更
+        self.L3Pref.InitializeSetting(self.blockSize)
+        self.L4Pref.InitializeSetting(self.blockSize)
+
+        # 情報を出力
+        print("restarting the system with the following setting:\n")
+        print("L3Size:{}\nL4Size:{}\nblockSize:{}\nReplacementPolicy:{}\n".format
+              (self.L1CacheSize,
+               self.L2CacheSize,
+                self.L3Cache.capacity,
+               self.L4Cache.capacity,
+               self.blockSize,
+               "LRU for now"))
+        
+        print("sending the info to server")
+        self.netIF.reInitRequest(self.blockOffset,L3CacheSize,L4CacheSize)
+
+        time.sleep(2) # give the server some time to warm up
+        print("start prefetching")
+        # # プリフェッチを開始
+        self.L2Pref.startPrefetching()
+        self.L1Pref.startPrefetching()
+
+
     def L2MissHandler(self,blockId,BlockAndData):
         compressed = self.netIF.send_req_urgent(blockId)
         original = self.decompressor(compressed)
@@ -45,20 +108,23 @@ class ClientAPI:
         original = self.decompressor(L2data)
         BlockAndData[blockId] = original
 
-    def getBlocks(self, tol, timestep, x, y, z, xOffset, yOffset, zOffset):
-        BlockIds = self.Block2BlockIds(tol, timestep, x, y, z, xOffset, yOffset, zOffset)
+    def getBlocks(self, tol, timestep, x, y, z, xEnd, yEnd, zEnd):
+        BlockIds = self.Block2BlockIds(tol, timestep, x, y, z, xEnd, yEnd, zEnd)
         BlockAndData = {}
         threads = []
 
         for blockId in BlockIds:
             L1data = self.L1Cache.get(blockId)
-            if L1data == None:
+            if L1data is None:
                 L2data = self.L2Cache.get(blockId)
-                if L2data == None:
+                if L2data is None:
                     # Urgent fetch using NetIF directly
-                    thread = threading.Thread(target=self.L2MissHandler, args=(blockId, BlockAndData))
-                    thread.start()
-                    threads.append(thread)
+                    # Submit tasks to the thread pool
+                    future = self.thread_pool.submit(self.L2MissHandler, blockId, BlockAndData)
+                    threads.append(future)
+                    # thread = threading.Thread(target=self.L2MissHandler, args=(blockId, BlockAndData))
+                    # thread.start()
+                    # threads.append(thread)
                 else:
                     thread = threading.Thread(target=self.L1MissHandler,args=(blockId,L2data,BlockAndData))
                     thread.start()
@@ -68,28 +134,29 @@ class ClientAPI:
         for thread in threads:
             thread.join()
         
-        # key,value = blockId,OriginalData -> recomposed data.
-        recompsedArray = self.recomposer.recompose(BlockAndData)
+        # BlockAndData = (key,value) = (blockId,OriginalData),  xyzRange = (x,xOffset,y,yOffset,z,zOffset) -> recomposed data.
+        xyzRange = (x,xEnd,y,yEnd,z,zEnd)
+        recompsedArray = self.recomposer.recompose(BlockAndData,xyzRange)
         return recompsedArray
     
-
-    def Block2BlockIds(self,tol,timestep,x,y,z,xOffset,yOffset,zOffset):
+    # 端っこは切り上げ、下側は切り下げ
+    def Block2BlockIds(self,tol,timestep,x,y,z,xEnd,yEnd,zEnd):
         xStartIdx = x//self.blockOffset*self.blockOffset
-        xEndPointIdx = (x + xOffset + self.blockOffset)//self.blockOffset*self.blockOffset
-        if (x + xOffset) % self.blockOffset == 0:
-            xEndPointIdx = (x + xOffset)//self.blockOffset*self.blockOffset
+        xEndPointIdx = (xEnd)//self.blockOffset*self.blockOffset + self.blockOffset
         xStartIdxs = np.arrange(xStartIdx,xEndPointIdx,self.blockOffset)
 
+        # yStartIdx = y//self.blockOffset*self.blockOffset
+        # yEndPointIdx = (y + yOffset + self.blockOffset)//self.blockOffset*self.blockOffset
+        # if (y + yOffset) % self.blockOffset == 0:
+        #     yEndPointIdx = (y + yOffset)//self.blockOffset*self.blockOffset
+        # xStartIdxs = np.arrange(yStartIdx,yEndPointIdx,self.blockOffset)
         yStartIdx = y//self.blockOffset*self.blockOffset
-        yEndPointIdx = (y + yOffset + self.blockOffset)//self.blockOffset*self.blockOffset
-        if (y + yOffset) % self.blockOffset == 0:
-            yEndPointIdx = (y + yOffset)//self.blockOffset*self.blockOffset
-        xStartIdxs = np.arrange(yStartIdx,yEndPointIdx,self.blockOffset)
+        yEndPointIdx = (yEnd)//self.blockOffset*self.blockOffset + self.blockOffset
+        yStartIdxs = np.arrange(xStartIdx,xEndPointIdx,self.blockOffset)
 
         zStartIdx = z//self.blockOffset*self.blockOffset
-        zEndPointIdx = (z + zOffset + self.blockOffset)//self.blockOffset*self.blockOffset
-        if (z + zOffset) % self.blockOffset == 0:
-            zEndPointIdx = (z + zOffset)//self.blockOffset*self.blockOffset
+        zEndPointIdx = (zEnd)//self.blockOffset*self.blockOffset + self.blockOffset
+        # zEndPointIdxは入らないから気をつけて
         zStartIdxs = np.arrange(zStartIdx,zEndPointIdx,self.blockOffset)
 
         BlockIds = []
@@ -99,22 +166,3 @@ class ClientAPI:
                     BlockIds.append(tol,timestep,xIdx,yIdx,zIdx)
         
         return BlockIds
-
-
-
-## もう一つは、L1とL2の間にいるプリふぇっちゃ。こいつは、decompressorに指示を出す権限を持っている。
-### L1キャッシュでノンヒットした場合、まずは、L2を見に行く。それでヒットすれば、でコンプレッサーを起動してバーッてやればいい。
-### L2でもヒットしなかった場合が面倒で、この場合は、割り込みが生じる感じになるのか。今やっていることを一回全部やめて、最優先タスクが投入される。
-### 最優先タスクとは、ユーザがほしいって指示したやつをネットワーク越しに持ってくるお仕事
-### この時、LRUキャッシュは特に何もやらない。てか、LRUキャッシュってプリフェッチもしなくないか？って今思った。
-### プリフェッチポリシーは同じにしてあげよう
-
-
-## L2プリふぇっちゃーは、内部にでキューを持っていて、でキューから先頭要素をポップして、それをネットワークでアクセス
-## して取ってきますね。
-### でキューである理由は、割り込みを生じさせるためです。割り込みを所持させて、行きたいと思います。
-### あと、プリふぇっちゃーはある点の周辺からどんどんデータを取ってくるわけですが、周りを見ることで実現するんですね。
-### もうすでにキューの中に入っているかの確認はどうやってしましょうか、というのが課題ですね。setとかで別に管理するのがいいのかな。
-### 一戸出す。リクエストが返ってくる。その周りのタイルを持ってくる。つまり、キューに入れる。で一戸リクエストを出す。周りのタイルがあるか確認して
-### って感じだから。周りのタイルをキューに入れる時点で同時にsetも使えばいいんだ。なるほど。図にした方がいいかな。
-
