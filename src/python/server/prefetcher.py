@@ -37,7 +37,7 @@ class L3Prefetcher:
         self.prefetch_q = deque() # blocks going to get
         self.thread = None
         # キャッシュに入れるブロックの半径
-        self.radius = 10 # for now.
+        self.radius = 3 # for now.
 
         # スレッドを止めるためのフラグ
         self.stop_thread = False
@@ -62,24 +62,29 @@ class L3Prefetcher:
         z = centerBlock[4]
         distance = d + 1
 
-        ## TODO tolの扱い。tolはあくまで、インタラクティブにするために必要なものなので、tolの次元は無視していい。
-        ## tolまで入れるとだいぶ厳しくなる。容量的に。
-        for dt in [-1,0,1]:
-            for dx in [-self.blockOffset, 0, self.blockOffset]:
-                for dy in [-self.blockOffset, 0, self.blockOffset]:
-                    for dz in [-self.blockOffset, 0, self.blockOffset]:
-                        if (self.gonnaPrefetchSet.__contains__((tol,timestep+dt, x+dx, y+dy, z+dz))
-                            or (timestep+dt < 0) or (timestep+dt >= self.maxTimestep) 
-                            or (x+dx < 0) or (x+dx >= self.maxX)
-                            or (y+dy < 0) or (y+dy >= self.maxY)
-                            or (z+dz < 0) or (z+dz >= self.maxZ)):
-                            continue
-                        else:
-                            self.prefetch_q.append((tol,timestep+dt, x+dx, y+dy, z+dz))
-                            self.gonnaPrefetchSet.add((tol,timestep+dt, x+dx, y+dy, z+dz))
+        # 時間方向に1つづれたブロックは1ホップ
+        for dt in [-1,1]:
+            if (self.gonnaPrefetchSet.__contains__((tol,timestep+dt, x, y, z))
+                        or (timestep+dt < 0) or (timestep+dt >= self.maxTimestep)):
+                continue
+            else:
+                self.prefetch_q.append(((tol,timestep+dt, x, y, z),distance))
+                self.gonnaPrefetchSet.add((tol,timestep+dt, x, y, z))  
+
+        for dx in [-self.blockOffset, 0, self.blockOffset]:
+            for dy in [-self.blockOffset, 0, self.blockOffset]:
+                for dz in [-self.blockOffset, 0, self.blockOffset]:
+                    if (self.gonnaPrefetchSet.__contains__((tol,timestep, x+dx, y+dy, z+dz))
+                        or (x+dx < 0) or (x+dx >= self.maxX)
+                        or (y+dy < 0) or (y+dy >= self.maxY)
+                        or (z+dz < 0) or (z+dz >= self.maxZ)):
+                        continue
+                    else:
+                        self.prefetch_q.append(((tol,timestep, x+dx, y+dy, z+dz),distance))
+                        self.gonnaPrefetchSet.add((tol,timestep, x+dx, y+dy, z+dz))
 
     def enqueue_first_blockId(self,blockId=(0.1, 0, 0 ,0 ,0 ),d=0):
-        self.prefetch_q.append(blockId)
+        self.prefetch_q.append((blockId,d))
         self.gonnaPrefetchSet.add(blockId)
 
     def pop_front(self):
@@ -161,8 +166,21 @@ class L3Prefetcher:
         self.enqueue_first_blockId(centerBlockId,0)
 
 
-    def calcHops(self,centerBlockId,targetBlockId):
-        pass
+    # これの実装が急務です。
+    # ここは、ホップの計算をどうやっているかに深く依存します。
+    # 時間を変化させたら、それはもう1ホップとしてカウントしましょう。
+    def calHops(self,centerBlockId,targetBlockId):
+        # 時間方向に何個ずれているかを確認まずは時間方向のホップ数があります。
+        timeHops = abs(centerBlockId[1]-targetBlockId[1])
+
+        # 空間方向のホップ数を確認します。どうやって？だいきくんに教わりましたが、
+        # 結局最大のホップ数は、ベクトルの最大成分になります。これ大事！
+        # なぜかというと、考えてください。
+        xHops = abs(centerBlockId[2]- targetBlockId[2])
+        yHops = abs(centerBlockId[3]- targetBlockId[3])
+        zHops = abs(centerBlockId[4]- targetBlockId[4])
+        spaceHops = max(xHops,yHops,zHops)//self.blockOffset # これでホップ数が出る
+        return timeHops + spaceHops
 
     # ここでどういう風にプリフェッチポリシーを変えるかというのもなかなか見ものであるところです
     def InformL3Hit(self,blockId):
@@ -187,7 +205,9 @@ class L3Prefetcher:
             # self.L3Cache.printInfo()
             # self.L3Cache.printAllKeys()
             if (not self.prefetch_q_empty()) and (len(self.L3Cache.cache) < self.L3Cache.capacity):
-                nextBlockId = self.pop_front()
+                nextBlockId,distance = self.pop_front()
+                if distance > self.radius:
+                    continue
                 original = self.L4Cache.get(nextBlockId)
                 if original is None:
                     try:
@@ -204,12 +224,12 @@ class L3Prefetcher:
                     compressed = self.compressor.compress(d,tol)
                     self.L3Cache.put(nextBlockId,compressed)
                 else:
-                    print("L4 HIT! when L3 Prefetching from L4",nextBlockId)
+                    print("L4 HIT! when L3 Prefetching from L4",nextBlockId,"distance:",distance)
                     tol = nextBlockId[0]
                     compressed = self.compressor.compress(original,tol)
                     self.L3Cache.put(nextBlockId,compressed)
                 self.prefetchedSet.add(nextBlockId)
-                self.enque_neighbor_blocks(nextBlockId)
+                self.enque_neighbor_blocks(nextBlockId,distance)
             else:
                 await asyncio.sleep(0.1)  # Sleep for 1 second, or adjust as needed
     
@@ -260,6 +280,8 @@ class L4Prefetcher:
         self.stop_thread = False
         self.thread = None
 
+        self.radius = 4
+
         # フェッチループ起動
         if self.L4Cache.capacity == 0:
             pass
@@ -272,28 +294,34 @@ class L4Prefetcher:
 
 
 # ここのforループの順番を変えることで、時間なのか、空間なのか、どっちの情報を優先的に取ってくるのかを決められる。どうするか？
-    def enque_neighbor_blocks(self,centerBlock):
-
+    def enque_neighbor_blocks(self,centerBlock,d):
         tol = centerBlock[0] 
         timestep = centerBlock[1]
         x = centerBlock[2]
         y = centerBlock[3]
         z = centerBlock[4]
+        distance = d + 1
 
-        ## TODO tolの扱い
-        for dt in [-1,0,1]:
-            for dx in [-self.blockOffset, 0, self.blockOffset]:
-                for dy in [-self.blockOffset, 0, self.blockOffset]:
-                    for dz in [-self.blockOffset, 0, self.blockOffset]:
-                        if (self.gonnaPrefetchSet.__contains__((tol,timestep+dt, x+dx, y+dy, z+dz))
-                            or (timestep+dt < 0) or (timestep+dt >= self.maxTimestep) 
-                            or (x+dx < 0) or (x+dx >= self.maxX)
-                            or (y+dy < 0) or (y+dy >= self.maxY)
-                            or (z+dz < 0) or (z+dz >= self.maxZ)):
-                            continue
-                        else:
-                            self.prefetch_q.append((tol,timestep+dt, x+dx, y+dy, z+dz))
-                            self.gonnaPrefetchSet.add((tol,timestep+dt, x+dx, y+dy, z+dz))
+        # 時間方向に1つづれたブロックは1ホップ
+        for dt in [-1,1]:
+            if (self.gonnaPrefetchSet.__contains__((tol,timestep+dt, x, y, z))
+                        or (timestep+dt < 0) or (timestep+dt >= self.maxTimestep)):
+                continue
+            else:
+                self.prefetch_q.append(((tol,timestep+dt, x, y, z),distance))
+                self.gonnaPrefetchSet.add((tol,timestep+dt, x, y, z))  
+
+        for dx in [-self.blockOffset, 0, self.blockOffset]:
+            for dy in [-self.blockOffset, 0, self.blockOffset]:
+                for dz in [-self.blockOffset, 0, self.blockOffset]:
+                    if (self.gonnaPrefetchSet.__contains__((tol,timestep, x+dx, y+dy, z+dz))
+                        or (x+dx < 0) or (x+dx >= self.maxX)
+                        or (y+dy < 0) or (y+dy >= self.maxY)
+                        or (z+dz < 0) or (z+dz >= self.maxZ)):
+                        continue
+                    else:
+                        self.prefetch_q.append(((tol,timestep, x+dx, y+dy, z+dz),distance))
+                        self.gonnaPrefetchSet.add((tol,timestep, x+dx, y+dy, z+dz))
 
     def pop_front(self):
         return self.prefetch_q.popleft()
@@ -311,10 +339,9 @@ class L4Prefetcher:
     def enqueue_blockId(self,blockId):
         self.prefetch_q.append(blockId)
 
-    def enqueue_first_blockId(self):
-        firstBlock = (0.1, 0, 0 ,0 ,0 )
-        self.prefetch_q.append(firstBlock)
-        self.gonnaPrefetchSet.add(firstBlock)
+    def enqueue_first_blockId(self,blockId = (0.1, 0, 0 ,0 ,0 ),d=0):
+        self.prefetch_q.append((blockId,d))
+        self.gonnaPrefetchSet.add(blockId)
 
     def InformL3Hit(self,blockId):
         print("L3 hit! nice! from L4 prefetcher")
@@ -340,11 +367,13 @@ class L4Prefetcher:
             # self.L4Cache.printInfo()
             # self.L4Cache.printAllKeys()
             if (not self.prefetch_q_empty()) and (len(self.L4Cache.cache) < self.L4Cache.capacity):
-                nextBlockId = self.pop_front()
+                nextBlockId,distance = self.pop_front()
+                if distance > self.radius:
+                    continue
                 data = self.Slicer.sliceData(nextBlockId)
                 self.L4Cache.put(nextBlockId,data)
                 self.prefetchedSet.add(nextBlockId)
-                self.enque_neighbor_blocks(nextBlockId)
+                self.enque_neighbor_blocks(nextBlockId,distance)
             else:
                 await asyncio.sleep(0.1)  # Sleep for 1 second, or adjust as needed
     
