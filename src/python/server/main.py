@@ -14,9 +14,10 @@ class MyRequestHandler(http.server.SimpleHTTPRequestHandler):
         super().__init__(*args, **kwargs)
 
     def do_GET(self):
-        # Access the custom variable in your GET request handling
+        # Access the custom variable in GET request
         msgType = (self.headers.get('type'))
-        print(self.headers)
+        
+        # print(self.headers)
         if msgType == 'init' :
             blockOffset = int(self.headers.get('offset'))
             L3Size = int(self.headers.get('L3Size'))
@@ -26,6 +27,7 @@ class MyRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.HttpAPI.reInit(blockSize=blockOffset,L3CacheSize=L3Size,L4CacheSize=L4Size,policy=Policy)
             self.send_response(200)
             self.end_headers()
+            # TODO データの範囲を送信
 
         elif msgType == 'BlockReq':
             tol = float(self.headers.get('tol'))
@@ -35,13 +37,34 @@ class MyRequestHandler(http.server.SimpleHTTPRequestHandler):
             z = int(self.headers.get('z'))
             blockId = (tol,timestep,x,y,z)
             blockId = self.HttpAPI.adjustBlockId(blockId)
-            print("get : ",blockId)
             compressed = self.HttpAPI.get(blockId)
             self.send_response(200)
-            # self.send_header("Content-type", "application/octet-stream")  # Set the appropriate content type
             self.end_headers()
             self.wfile.write(compressed)
 
+        elif msgType == 'noCompress':
+            timestep = int(self.headers.get('timestep'))
+            tol = float(self.headers.get('tol'))
+            x = int(self.headers.get('x'))
+            y = int(self.headers.get('y'))
+            z = int(self.headers.get('z'))
+            blockId = (tol,timestep,x,y,z)
+            blockId = self.HttpAPI.adjustBlockId(blockId)
+            original = self.HttpAPI.getOriginal(blockId)
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(original)
+
+
+        elif msgType == 'userPoint':
+            timestep = int(self.headers.get('timestep'))
+            tol = float(self.headers.get('tol'))
+            x = int(self.headers.get('x'))
+            y = int(self.headers.get('y'))
+            z = int(self.headers.get('z'))
+            blockId = (tol,timestep,x,y,z)
+            self.HttpAPI.L3Cache.InformUserPoint(blockId)
+            self.HttpAPI.L4Cache.InformUserPoint(blockId)
 
 
 
@@ -52,7 +75,7 @@ class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
 def main():
     
     # interface to interact with the system 
-    httpApi = HttpAPI()
+    httpApi = HttpAPI(blockSize=256)
 
     # Set the server address and port
     server_address = ('', 8080)
@@ -74,6 +97,12 @@ def main():
         # Handle Ctrl+C to gracefully shut down the server
         print("Shutting down the server")
         httpd.shutdown()
+
+
+# def main2():
+
+#     # interface to interact with the system
+#     websockAhp = 
 
 if __name__ == '__main__':
     main()
