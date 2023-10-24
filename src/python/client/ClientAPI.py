@@ -113,7 +113,7 @@ class ClientAPI:
 
 
     def L2MissHandler(self,blockId,BlockAndData):
-        compressed = self.netIF.send_req_urgent(blockId)
+        compressed = self.netIF.send_req_urgent_usr(blockId)
         self.L2Cache.put(blockId,compressed)
         original = self.decompressor.decompress(compressed)
         BlockAndData[blockId] = original

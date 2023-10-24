@@ -14,14 +14,14 @@ import threading
 import requests
 
 class NetIF:
-    def __init__(self,L2Cache,serverIp="http://localhost:8080"):
+    def __init__(self,L2Cache,serverIp="http://172.20.2.253:8080"):
         self.L2Cache = L2Cache
         self.sendQ = deque() 
         self.URL = serverIp
         # ここで、送信スレッドを起動する
         self.thread = threading.Thread(target=self.thread_func)
         self.thread.start()
-    
+
     
     # 末尾に追加
     def send_req(self,blockId):
@@ -41,6 +41,41 @@ class NetIF:
 
         response = requests.get(self.URL,headers=header)
         return response.content
+    
+    def send_req_urgent_usr(self,BlockId):
+
+        header = {
+            'type':'BlockReqUsr',
+            'tol':str(BlockId[0]),
+            'timestep':str(BlockId[1]),
+            'x': str(BlockId[2]),
+            'y': str(BlockId[3]),
+            'z': str(BlockId[4])
+        }
+
+        response = requests.get(self.URL,headers=header)
+        return response.content
+    
+    def send_req_original_urgent(self,BlockId):
+        
+        header = {
+            'type':'noCompress',
+            'tol':str(BlockId[0]),
+            'timestep': str(BlockId[1]),
+            'x': str(BlockId[2]),
+            'y': str(BlockId[3]),
+            'z': str(BlockId[4])
+        }
+        response = requests.get(self.URL, headers=header)
+        response_content = response.content
+        numpy_array = np.frombuffer(response_content, dtype=np.float32)
+        return numpy_array
+
+    def requestStats(self):
+
+        header = {
+            
+        }
     
     def IsSendQEmpty(self):
         if(len(self.sendQ) == 0):

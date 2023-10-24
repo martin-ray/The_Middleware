@@ -42,6 +42,20 @@ class MyRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(compressed)
 
+        # cache hit率を測定するために必要な部分
+        elif msgType == 'BlockReqUsr':
+            tol = float(self.headers.get('tol'))
+            timestep = int(self.headers.get('timestep'))
+            x = int(self.headers.get('x'))
+            y = int(self.headers.get('y'))
+            z = int(self.headers.get('z'))
+            blockId = (tol,timestep,x,y,z)
+            blockId = self.HttpAPI.adjustBlockId(blockId)
+            compressed = self.HttpAPI.getUsr(blockId)
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(compressed)
+
         elif msgType == 'noCompress':
             timestep = int(self.headers.get('timestep'))
             tol = float(self.headers.get('tol'))
@@ -65,6 +79,11 @@ class MyRequestHandler(http.server.SimpleHTTPRequestHandler):
             blockId = (tol,timestep,x,y,z)
             self.HttpAPI.L3Cache.InformUserPoint(blockId)
             self.HttpAPI.L4Cache.InformUserPoint(blockId)
+
+        # TODO (まず、ユーザからのリクエストと、クライアントサイドのプリふぇっちゃーからのリクエストを区別しないと厳しい。)
+        # TODO そのためには、
+        elif msgType == 'getStats':
+            totalReqs = self.HttpAPI.numReqs
 
 
 
