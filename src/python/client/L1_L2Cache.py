@@ -8,14 +8,14 @@ class TSDynamic_cache: # 自分で自分のロックを持っているので、�
     def __init__(self,capacity,offsetSize):
         self.capacity = capacity
         self.usedSize = 0
-        self.usedSizeInMB = 0
+        self.usedSizeInMiB = 0
         self.SizeOfFloat = 4
         self.offsetSize = offsetSize
         self.BlockX = offsetSize
         self.BlockY = offsetSize
         self.BlockZ = offsetSize
         self.OneBlockSize = offsetSize**3*4/1024/1024
-        self.capacityInMB = offsetSize**3*4*capacity/1024/1024
+        self.capacityInMiB = offsetSize**3*4*capacity/1024/1024
         self.blocksize = self.SizeOfFloat*self.BlockX*self.BlockY*self.BlockZ
         self.cache = {}  # Dictionary to store cached items key = (tol,t,x,y,z), value = compressedData/decompressedData
         self.radius = 100 # for now.
@@ -45,17 +45,15 @@ class TSDynamic_cache: # 自分で自分のロックを持っているので、�
 
 # スレッドセーフになってる
 class LRU_cache:
-    def __init__(self, capacity, offsetSize=256):
-        self.capacity = capacity ## block that can be store
-        self.usedSize = 0
-        self.usedSizeInMB = 0
+    def __init__(self, capacityInMiB, offsetSize=256):
+        self.usedSizeInMiB = 0
         self.SizeOfFloat = 4
         self.offsetSize = offsetSize
         self.BlockX = offsetSize
         self.BlockY = offsetSize
         self.BlockZ = offsetSize
         self.OneBlockSize = offsetSize ** 3 * self.SizeOfFloat
-        self.capacityInMB = offsetSize ** 3 * self.SizeOfFloat * capacity / 1024 / 1024
+        self.capacityInMiB = capacityInMiB
         self.cache = OrderedDict()  # Use OrderedDict to maintain order
         self.CacheLock = threading.Lock()
         self.printInitInfo()
@@ -64,29 +62,29 @@ class LRU_cache:
     def get(self, key):
         with self.CacheLock:
             if key in self.cache:
-                # Move the accessed item to the end
                 self.cache.move_to_end(key)
                 return self.cache[key]
         return None
 
     def put(self, key, value):
-        if (self.capacity) == 0:
+        if self.capacityInMB == 0:
             return
         with self.CacheLock:
             if key in self.cache:
-            # If the key already exists, move it to the end
                 self.cache.move_to_end(key)
-            elif len(self.cache) >= self.capacity:
-                # Evict the least recently used item (first item in OrderedDict)
-                self.cache.popitem(last=False)
-                print("cache is full! replacing!")
+            # elif len(self.cache) >= self.capacity:
+            elif self.usedSizeInMiB > self.capacityInMiB:
+                # Evict the least recently used item
+                removedItem = self.cache.popitem(last=False)
+                self.usedSizeInMiB -= removedItem[1].nbytes/1024/1024
             self.cache[key] = value
+            self.usedSizeInMiB += value.nbytes/1024/1024
 
     def getUsedSize(self):
         return len(self.cache)
     
-    def getUsedSizeInMb(self):
-        return self.OneBlockSize*len(self.cache)/1024/1024
+    def getUsedSizeInMiB(self):
+        return self.usedSizeInMB
     
 
     def printInitInfo(self):
@@ -107,13 +105,24 @@ class LRU_cache:
 
     def changeCapacity(self,capacity):
         self.capacity = capacity
-        self.capacityInMB = self.offsetSize ** 3 * self.SizeOfFloat * capacity / 1024 / 1024
+        self.capacityInMiB = self.offsetSize ** 3 * self.SizeOfFloat * capacity / 1024 / 1024
         self.OneBlockSize = self.offsetSize ** 3 * self.SizeOfFloat
 
     def changeBlockoffset(self,blockOffset):
         self.offsetSize = blockOffset
         self.OneBlockSize = self.offsetSize ** 3 * self.SizeOfFloat
-        self.capacityInMB = self.offsetSize ** 3 * self.SizeOfFloat * self.capacity / 1024 / 1024
+        self.capacityInMiB = self.offsetSize ** 3 * self.SizeOfFloat * self.capacity / 1024 / 1024
+
+    def calCapacityFromGiB(self,GiB):
+        self.capacity = GiB*1024*1024*1024/(self.offsetSize**3 * self.SizeOfFloat)
+        self.capacityInMiB = GiB*1024
+        return self.capacity
+    
+    def setCacheSizeInGiB(self,GiB):
+        self.capacity = GiB*1024*1024*1024/(self.offsetSize**3 * self.SizeOfFloat)
+        self.capacityInMiB = GiB*1024
+        return self.capacity
+
 
 # Example usage and test
 if __name__ == "__main__":

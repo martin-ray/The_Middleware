@@ -32,7 +32,7 @@ class L2Prefetcher:
         self.stop_thread = False
 
         # フェッチループを起動
-        if self.L2Cache.capacity == 0:
+        if self.L2Cache.capacityInMiB == 0:
             pass
         else:
             self.thread = threading.Thread(target=self.thread_func)
@@ -92,12 +92,15 @@ class L2Prefetcher:
         self.clearQueue()
         self.enque_neighbor_blocks(blockId)
 
+    def InformUserPoint(self,blockId):
+        pass
+
 
     async def fetchLoop(self):
         while not self.stop_thread:
             # print("L2:")
             # self.L2Cache.printAllKeys()
-            if (not self.prefetch_q_empty()) and (self.L2Cache.usedSize < self.L2Cache.capacity):
+            if (not self.prefetch_q_empty()) and (self.L2Cache.usedSizeInMiB < self.L2Cache.capacityInMiB):
                 # self.L2Cache.printInfo()
                 nextBlockId = self.pop_front()
                 self.Netif.send_req(nextBlockId) # 別スレッドで実行されるキュー
@@ -112,7 +115,7 @@ class L2Prefetcher:
 
     def startPrefetching(self):
         self.stop_thread = False
-        if self.L2Cache.capacity > 0:
+        if self.L2Cache.capacityInMiB > 0:
             self.thread = threading.Thread(target=self.thread_func)
             self.thread.start()
             self.enqueue_first_blockId()
@@ -166,7 +169,7 @@ class L1Prefetcher:
         self.stop_thread = False
 
         # フェッチループ起動
-        if self.L1Cache.capacity == 0:
+        if self.L1Cache.capacityInMiB == 0:
             pass
         else:
             self.thread = threading.Thread(target=self.thread_func)
@@ -233,7 +236,7 @@ class L1Prefetcher:
         while not self.stop_thread:
             # print("L1 cache:")
             # self.L1Cache.printAllKeys()
-            if (not self.prefetch_q_empty()) and (self.L1Cache.usedSize < self.L1Cache.capacity):
+            if (not self.prefetch_q_empty()) and (self.L1Cache.usedSizeInMiB < self.L1Cache.capacityInMiB):
                 # self.L1Cache.printInfo()
                 nextBlockId = self.pop_front()
                 compressed = self.L2Cache.get(nextBlockId)
