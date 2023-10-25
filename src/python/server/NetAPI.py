@@ -30,7 +30,6 @@ class HttpAPI:
         self.numL3Hit = 0
         self.numL4Hit = 0
         self.numL3L4Miss = 0 # numReqs == numL3Hit + numL4Hit + numL3L4Missって計算式になります
-        self.statsLock = threading.Lock()
 
 
     def reInit(self,L3CacheSize,L4CacheSize,blockSize,policy='LRU'):
@@ -98,14 +97,14 @@ class HttpAPI:
         if L3data is None:
             L4data = self.L4Cache.get(blockId)
             if L4data is None:
-                self.numL4Hit += 1
+                self.numL3L4Miss += 1
                 self.L3Pref.InformL3MissAndL4Miss(blockId)
                 self.L4Pref.InformL3MissAndL4Miss(blockId) # プリフェッチポリシーの変更はプリふぇっちゃー側で変更してください
                 original = self.Slicer.sliceData(blockId)
                 compressed = self.compressor.compress(original,tol)
                 return compressed
             else:
-                self.numL3L4Miss += 1
+                self.numL4Hit += 1
                 self.L3Pref.InformL3MissAndL4Hit(blockId)
                 self.L4Pref.InformL3MissAndL4Hit(blockId)
                 return self.compressor.compress(L4data,tol)
