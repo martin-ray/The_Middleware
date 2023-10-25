@@ -45,7 +45,12 @@ class ClientAPI:
 
         # スレッド数
         self.thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=8)
-        
+
+
+        # L1Hit L2Hit Server Req
+        self.numL1Hit = 0
+        self.numL2Hit = 0
+        self.numReqTime = 0
 
 
     def reInit(self,L1CacheSize,L2CacheSize,L3CacheSize,L4CacheSize,blockSize,policy='LRU'):
@@ -77,6 +82,11 @@ class ClientAPI:
         # 別スレッドで動いているぷりふぇっちゃーの設定を変更
         self.L1pref.InitializeSetting(self.blockSize)
         self.L2pref.InitializeSetting(self.blockSize)
+
+        # スタッツをクリア
+        self.numL1Hit = 0
+        self.numL2Hit = 0
+        self.numReqTime = 0
 
         # 情報を出力
         print("restarting the system with the following setting:\n")
@@ -140,14 +150,17 @@ class ClientAPI:
                 self.L1pref.InformL1MissByUser(blockId)
                 L2data = self.L2Cache.get(blockId)
                 if L2data is None:
+                    self.numReqTime += 1
                     self.L2pref.InformL2MissByUser(blockId)
                     future = self.thread_pool.submit(self.L2MissHandler, blockId, BlockAndData)
                     threads.append(future)
                 else:
+                    self.numL2Hit += 1
                     self.L2pref.InformL1MissL2HitByUser(blockId)
                     future = self.thread_pool.submit(self.L1HitHandler, blockId, L2data, BlockAndData)
                     threads.append(future)
             else:
+                self.numL1Hit += 1
                 # L1でヒット
                 print("L1 hit!")
                 BlockAndData[blockId] = L1data
@@ -177,10 +190,12 @@ class ClientAPI:
         for blockId in BlockIds:
             L1data = self.L1Cache.get(blockId)
             if L1data is None:
+                self.numReqTime += 1
                 self.L1pref.InformL1MissByUser(blockId)
                 future = self.thread_pool.submit(self.L1MissOriginalHandler, blockId, BlockAndData)
                 threads.append(future)
             else:
+                self.numL1Hit += 1
                 # L1でヒット
                 print("L1 hit!")
                 BlockAndData[blockId] = L1data
@@ -221,3 +236,10 @@ class ClientAPI:
                     BlockIds.append((tol,timestep,xIdx,yIdx,zIdx))
         
         return BlockIds
+
+    def GetStats(self):
+        stats = self.netIF.requestStats()
+        stats["nL1Hit"] = self.numL1Hit
+        stats["nL2Hit"] = self.numL2Hit
+        stats["reqs"] = self.numReqTime
+        return stats
