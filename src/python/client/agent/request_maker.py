@@ -12,7 +12,7 @@ class requestMaker:
         self.moveDirection = ['timestep','x','y','z']
 
     def random_xyz(self):
-        return random.randint(0, 1023)
+        return random.randint(0, 1023-self.blockSize)
     
     def random_timestep(self):
         return random.randint(0,9)
@@ -40,10 +40,9 @@ class requestMaker:
         firstRequest = (self.targetTol,0,0,0,0)
         requests.append(firstRequest)
         previousRequest = firstRequest
-        req_n = 0
+        req_n = 1
         while req_n < length:
             direction = self.random_direction()
-            print(direction)
             nexRequest = None
             if direction == 'timestep':
                 nexRequest = (previousRequest[0],
@@ -73,11 +72,11 @@ class requestMaker:
             # 範囲を超えていたら整形
             if nexRequest[1] < 0 or nexRequest[1] > self.maxTimestep:
                 pass
-            elif nexRequest[2] < 0 or nexRequest[2] > self.maxX:
+            elif nexRequest[2] < 0 or nexRequest[2] > self.maxX - self.blockSize:
                 pass
-            elif nexRequest[3] < 0 or nexRequest[3] > self.maxY:
+            elif nexRequest[3] < 0 or nexRequest[3] > self.maxY - self.blockSize:
                 pass
-            elif nexRequest[4] < 0 or nexRequest[4] > self.maxZ:
+            elif nexRequest[4] < 0 or nexRequest[4] > self.maxZ - self.blockSize:
                 pass
             else :
                 requests.append(nexRequest) 
@@ -93,7 +92,8 @@ class requestMaker:
         requests = []
         previousReq = None
         nextReq = None
-        firstRequest = (self.targetTol,0,0,0,0)
+        firstRequest = (0.1 ,0,0,0,0)
+        # firstRequest = (self.targetTol,0,0,0,0)
         requests.append(firstRequest)
         previousRequest = firstRequest
         req_n = 0
@@ -129,13 +129,13 @@ class requestMaker:
                                 previousRequest[4] + self.random_choice()*self.blockSize)
                 
                 # 整形
-                if nexRequest[1] < 0 or nexRequest[1] > self.maxTimestep:
+                if nexRequest[1] < 0 or nexRequest[1] >= self.maxTimestep - self.blockSize:
                     pass
-                elif nexRequest[2] < 0 or nexRequest[2] > self.maxX:
+                elif nexRequest[2] < 0 or nexRequest[2] >= self.maxX - self.blockSize:
                     pass
-                elif nexRequest[3] < 0 or nexRequest[3] > self.maxY:
+                elif nexRequest[3] < 0 or nexRequest[3] >= self.maxY - self.blockSize:
                     pass
-                elif nexRequest[4] < 0 or nexRequest[4] > self.maxZ:
+                elif nexRequest[4] < 0 or nexRequest[4] >= self.maxZ - self.blockSize:
                     pass
                 else :
                     requests.append(nexRequest) 
@@ -150,12 +150,11 @@ class requestMaker:
                        self.random_xyz())
                 requests.append(nextReq) 
                 previousRequest = nextReq
+                req_n += 1
         return requests
 
 if __name__ == "__main__":
     maker = requestMaker(256,9)
-    requests = maker.continuousRequester(10)
-    print(requests)
-
-    randomRequests = maker.randAndcontMixRequester(10000)
-    print(randomRequests)
+    requests = maker.continuousRequester(100)
+    for req in requests:
+        print(req)
