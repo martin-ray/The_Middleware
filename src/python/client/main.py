@@ -78,8 +78,8 @@ if __name__ == "__main__":
     # blockSizes = [64, 128, 256, 512]
     blockSizes = [256]
     num_requests = [100,200,400]
-    randomRatios = np.random.randint(0,100,25) # 何パーセントランダムか？0の時は、完全に連続。100の時は完全にランダム
-
+    # randomRatios = np.random.randint(0,100,25) # 何パーセントランダムか？0の時は、完全に連続。100の時は完全にランダム
+    randomRatios = np.linspace(0, 100, 25) / 100.0
     header = ['tol','L1Size', 'L2Size', 'L3Size', 'L4Size', 'blockSize',
                'num_requests', 'request_pattern', 'tatime', 'numL1Hits', 
                'numL2Hits', 'numL3Hits', 'numL4Hits','AllMiss','PropAvrLatency','TileDbArvLatency'] # num_requests = numL1Hits + numL2Hits + numL3Hits + numL4Hits
