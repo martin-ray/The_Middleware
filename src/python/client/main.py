@@ -20,9 +20,11 @@ def OneExp(tol,L1Size,L2Size,L3Size,L4Size,blockSize,numReqs,radomRatio,analisis
     cli = ClientAPI(L1Size=L1Size,L2Size=L2Size,L3Size=L3Size,L4Size=L4Size,
                     blockSize=blockSize)
     
-    tiledbCli = TiledbConnector()
-
+    print("creating tiledb client")
+    tiledbCli = TiledbConnector(L1Size+L2Size)
+    
     start_time = time.time()
+    PropBytes = 0
     while len(reqs) > 0:
         req = reqs.pop(0)
         try : 
@@ -43,17 +45,23 @@ def OneExp(tol,L1Size,L2Size,L3Size,L4Size,blockSize,numReqs,radomRatio,analisis
     cli.StopPrefetching()
 
 
+
     start_time = time.time()
+    tiledbBytes = 0
     while len(reqsTiledb) > 0:
         req = reqsTiledb.pop(0)
         try : 
-            tiledbCli.get(timestep=req[1],
+            data = tiledbCli.get(timestep=req[1],
                           x=req[2],xx=req[2] + blockSize - 1,
                           y=req[3],yy=req[3] + blockSize - 1,
                           z=req[4],zz=req[4] + blockSize - 1
                         )
             print("the rest of request:{}".format(len(reqsTiledb)))
             time.sleep(analisisTime)
+            # print(data)
+            tiledbBytes += data['data'].nbytes
+            print(tiledbBytes)
+            print(data['data'].shape)
         except Exception as e:
             print(e)
     end_time = time.time()
@@ -78,8 +86,8 @@ if __name__ == "__main__":
     # blockSizes = [64, 128, 256, 512]
     blockSizes = [256]
     num_requests = [100,200,400]
-    # randomRatios = np.random.randint(0,100,25) # 何パーセントランダムか？0の時は、完全に連続。100の時は完全にランダム
-    randomRatios = np.linspace(0, 100, 25) / 100.0
+    randomRatios = np.random.randint(0,100,25) # 何パーセントランダムか？0の時は、完全に連続。100の時は完全にランダム
+    #randomRatios = np.linspace(0, 100, 25) / 100.0
     header = ['tol','L1Size', 'L2Size', 'L3Size', 'L4Size', 'blockSize',
                'num_requests', 'request_pattern', 'tatime', 'numL1Hits', 
                'numL2Hits', 'numL3Hits', 'numL4Hits','AllMiss','PropAvrLatency','TileDbArvLatency'] # num_requests = numL1Hits + numL2Hits + numL3Hits + numL4Hits
