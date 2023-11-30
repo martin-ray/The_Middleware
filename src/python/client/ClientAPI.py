@@ -18,6 +18,9 @@ class ClientAPI:
         self.L3CacheSize = L3Size
         self.L4CacheSize = L4Size
         self.blockOffset = blockSize
+
+        # GPUの利用権。できればロックフリーにしたいんだけど、さすがに俺には難しい。
+        self.GPUmutex = threading.Lock()
         
         # 各コンポーネント
         self.L1Cache = LRU_cache(self.L1CacheSize,self.blockOffset)
@@ -35,17 +38,16 @@ class ClientAPI:
         else:
             print("initalization success!")
 
-        # fetchLoop threadはconstructorの中で起動
-        self.L2pref = L2Prefetcher(L2Cache=self.L2Cache) 
+        # fetchLoop threadはconstructorの中で起動。L2prefがGPUmutexを使うことはおそらくないんだろうね。
+        self.L2pref = L2Prefetcher(L2Cache=self.L2Cache,GPUmutex=self.GPUmutex) 
 
         # fetchLoop threadはconstructorの中で起動。L1prefは自分でdecompressorのインスタンスを持っている
-        self.L1pref = L1Prefetcher(L1Cache=self.L1Cache,L2Cache=self.L2Cache,offsetSize=self.blockOffset)
+        self.L1pref = L1Prefetcher(L1Cache=self.L1Cache,L2Cache=self.L2Cache,offsetSize=self.blockOffset,GPUmutex=self.GPUmutex)
         
         self.recomposer = Recomposer(blockOffset=self.blockOffset)
 
         # スレッド数
         self.thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=8)
-
 
         # L1Hit L2Hit Server Req
         self.numL1Hit = 0

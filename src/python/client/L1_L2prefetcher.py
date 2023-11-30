@@ -14,7 +14,7 @@ from NetInterface import NetIF
 from decompressor import Decompressor
 
 class L2Prefetcher:
-    def __init__(self,L2Cache,maxTimestep=9,serverURL="http://localhost:8080",OnSwitch=True) -> None:
+    def __init__(self,L2Cache,GPUmutex,maxTimestep=9,serverURL="http://localhost:8080",OnSwitch=True,) -> None:
         self.URL = serverURL
 
         # ToleranceArray
@@ -31,6 +31,9 @@ class L2Prefetcher:
         self.Netif = NetIF(self.L2Cache,serverURL)
         self.stop_thread = False
 
+        # GPUmutex
+        self.GPUmutex = GPUmutex
+
         # フェッチループを起動
         if self.L2Cache.capacityInMiB == 0 and OnSwitch == False:
             pass
@@ -39,7 +42,7 @@ class L2Prefetcher:
             self.thread.start()
             self.enqueue_first_blockId()
 
-    
+        
     def enque_neighbor_blocks(self,centerBlock):
         tol = centerBlock[0] 
         timestep = centerBlock[1]
@@ -148,7 +151,7 @@ class L2Prefetcher:
 
 # TODO 継承
 class L1Prefetcher:
-    def __init__(self,L1Cache,L2Cache,maxTimestep=9,offsetSize=256,OnSwitch=True):
+    def __init__(self,L1Cache,L2Cache,GPUmutex,maxTimestep=9,offsetSize=256,OnSwitch=True):
         # 自分で持っていた方がいいと判断。
         
         self.L1Cache = L1Cache
@@ -168,6 +171,9 @@ class L1Prefetcher:
         self.prefetchedSet = set()
         self.prefetch_q = deque()
         self.stop_thread = False
+
+        # GPUのmutex
+        self.GPUmutex = GPUmutex
 
         # フェッチループ起動
         if self.L1Cache.capacityInMiB == 0 and OnSwitch == False:
@@ -242,14 +248,19 @@ class L1Prefetcher:
                 nextBlockId = self.pop_front()
                 compressed = self.L2Cache.get(nextBlockId) # ここだよね。
                 # ここで、隠蔽してほしいって話なんだよね。だから、Missしたら、L2Cacheが責任を持って処理しないといけない。
-                # 
+                # それとも、グローバル領域にMutexを持っておいて、それを取っておくことでPrefetcherをけん制するか？
+                # そっちの方が実装は簡単だよね。その方針で行こうかなって今は思っています。
                 if compressed is None:
                     # L2のプリフェッチポリシーを変更.どうやって？今までキューにたまっているものを捨てる？どうする？わかりまてー－ん。
                     compressed = self.Netif.send_req_urgent(nextBlockId)
-                    original = self.decompressor.decompress(compressed)
+                    original = None
+                    with self.GPUmutex:
+                        original = self.decompressor.decompress(compressed)
                     self.L1Cache.put(nextBlockId,original)
                 else: # L2Hit
-                    original = self.decompressor.decompress(compressed)
+                    original = None
+                    with self.GPUmutex:
+                        original = self.decompressor.decompress(compressed)
                     self.L1Cache.put(nextBlockId,original)   
 
                 # 忘れずに！
