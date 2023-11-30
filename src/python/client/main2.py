@@ -120,10 +120,8 @@ if __name__ == "__main__":
     with open(csv_file_name, "a", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(header)
-
-# なんか知らないけど、バグが起こっています。これを直すまでは帰れまてんね。おそらく、あの部分だと思う。
-# 複数のリクエストを作ってくれるところあるじゃない。そこだね。完全に。
-
+    
+    
     # 順番は最適化してほしい
     print("here in front of loop")
     print(randomRatios)
