@@ -10,7 +10,7 @@ import concurrent.futures
 
 class ClientAPI:
     # L1は絶対にONにしないといけない?L4も絶対にONにしないといけない? そんなことない
-    def __init__(self,L1Size, L2Size, L3Size, L4Size,blockSize=256):
+    def __init__(self,L1Size, L2Size, L3Size, L4Size,blockSize=256,L1PrefOn=True,L2PrefOn=True,L3PrefOn=True,L4PrefOn=True):
 
         # 実験パラメータ
         self.L1CacheSize = L1Size
@@ -212,7 +212,7 @@ class ClientAPI:
     # 端っこは切り上げ、下側は切り下げ
     def Block2BlockIds(self,tol,timestep,x,y,z,xEnd,yEnd,zEnd):
         xStartIdx = x//self.blockOffset*self.blockOffset
-        xEndPointIdx = (xEnd)//self.blockOffset*self.blockOffset + self.blockOffset
+        xEndPointIdx = (xEnd)//self.blockOffset*self.blockOffset # + self.blockOffset -1 
         xStartIdxs = np.arange(xStartIdx,xEndPointIdx,self.blockOffset)
 
         # yStartIdx = y//self.blockOffset*self.blockOffset
@@ -221,11 +221,11 @@ class ClientAPI:
         #     yEndPointIdx = (y + yOffset)//self.blockOffset*self.blockOffset
         # xStartIdxs = np.arrange(yStartIdx,yEndPointIdx,self.blockOffset)
         yStartIdx = y//self.blockOffset*self.blockOffset
-        yEndPointIdx = (yEnd)//self.blockOffset*self.blockOffset + self.blockOffset
+        yEndPointIdx = (yEnd)//self.blockOffset*self.blockOffset # + self.blockOffset -1 
         yStartIdxs = np.arange(yStartIdx,yEndPointIdx,self.blockOffset)
 
         zStartIdx = z//self.blockOffset*self.blockOffset
-        zEndPointIdx = (zEnd)//self.blockOffset*self.blockOffset + self.blockOffset
+        zEndPointIdx = (zEnd)//self.blockOffset*self.blockOffset # + self.blockOffset -1 
         # zEndPointIdxは入らないから気をつけて
         zStartIdxs = np.arange(zStartIdx,zEndPointIdx,self.blockOffset)
 
