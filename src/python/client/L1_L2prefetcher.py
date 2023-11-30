@@ -163,6 +163,7 @@ class L1Prefetcher:
         self.maxY = 1024
         self.maxZ = 1024
         self.default_offset = offsetSize
+        self.blockOffset = offsetSize
         self.gonnaPrefetchSet = set()
         self.prefetchedSet = set()
         self.prefetch_q = deque()
@@ -239,7 +240,9 @@ class L1Prefetcher:
             if (not self.prefetch_q_empty()) and (self.L1Cache.usedSizeInMiB < self.L1Cache.capacityInMiB):
                 # self.L1Cache.printInfo()
                 nextBlockId = self.pop_front()
-                compressed = self.L2Cache.get(nextBlockId)
+                compressed = self.L2Cache.get(nextBlockId) # ここだよね。
+                # ここで、隠蔽してほしいって話なんだよね。だから、Missしたら、L2Cacheが責任を持って処理しないといけない。
+                # 
                 if compressed is None:
                     # L2のプリフェッチポリシーを変更.どうやって？今までキューにたまっているものを捨てる？どうする？わかりまてー－ん。
                     compressed = self.Netif.send_req_urgent(nextBlockId)
