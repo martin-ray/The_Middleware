@@ -9,9 +9,25 @@ import numpy as np
 import _mgard as mgard
 import csv
 import datetime
+import subprocess 
+
+interface = "eno1"
+initial_latency = "0ms"
 
 # simTim : 追加してくれ
-def OneExp(tol,L1Size,L2Size,L3Size,L4Size,blockSize,numReqs,radomRatio,analisisTime=0):
+def OneExp(tol,L1Size,L2Size,L3Size,L4Size,blockSize,numReqs,radomRatio,analisisTime=0,networkLatency=0):
+
+
+    netlatency = f"{networkLatency}ms"
+
+    tc_command = ["tc", "qdisc", "add", "dev", "eth0", "root", "netem", "delay", netlatency]
+
+    try:
+        subprocess.run(tc_command, check=True)
+        print(f"Latency set to {networkLatency}")
+
+    except subprocess.CalledProcessError as e:
+        print(f"Error running tc command: {e}")
     
     maxtimestep=63
     reqMaker = requestMaker(blockSize,maxtimestep)
@@ -44,6 +60,8 @@ def OneExp(tol,L1Size,L2Size,L3Size,L4Size,blockSize,numReqs,radomRatio,analisis
     stats["AllMiss"] = numReqs - stats["nL1Hit"] - stats["nL2Hit"] - stats["nL3Hit"] - stats["nL4Hit"]
     stats["tat"] = elapsed_time
     stats["PropAverageLatency"] = elapsed_time/numReqs
+    stats["networkLatency"] = networkLatency # ms
+    stats["analisisTime"] = analisisTime
     cli.StopPrefetching()
 
 
@@ -78,7 +96,7 @@ def OneExp(tol,L1Size,L2Size,L3Size,L4Size,blockSize,numReqs,radomRatio,analisis
     elapsed_time = end_time - start_time
     print("tiledb_elapsed=",elapsed_time)
     stats["TiledbAverageLatency"] = elapsed_time/numReqs
-    cli.StopPrefetching()
+    # cli.StopPrefetching() # いらなくね？
 
     return stats
 
@@ -107,7 +125,7 @@ if __name__ == "__main__":
     #randomRatios = np.linspace(0, 100, 25) / 100.0
     header = ['tol','L1Size', 'L2Size', 'L3Size', 'L4Size', 'blockSize',
                'num_requests', 'request_pattern', 'numL1Hits', 
-               'numL2Hits', 'numL3Hits', 'numL4Hits','AllMiss','PropAvrLatency','TileDbArvLatency','analisisTime'] # num_requests = numL1Hits + numL2Hits + numL3Hits + numL4Hits
+               'numL2Hits', 'numL3Hits', 'numL4Hits','AllMiss','PropAvrLatency','TileDbArvLatency','analisisTime',"networkLatency"] # num_requests = numL1Hits + numL2Hits + numL3Hits + numL4Hits
 
 
         # Create the file name based on the timestamp
@@ -144,6 +162,7 @@ if __name__ == "__main__":
                                                         stats["nL3Hit"],stats["nL4Hit"],
                                                         stats["AllMiss"],
                                                         stats["PropAverageLatency"],
+                                                        stats["analisisTime"],
                                                         stats["TiledbAverageLatency"]]
                                         except Exception as e:
                                             print(e)
