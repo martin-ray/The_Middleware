@@ -18,7 +18,10 @@ from compressor import compressor
 
 # L3キャッシュとL4キャッシュプリふぇっちゃで同じスライサーを共有すると、なぜか片方が全く取れなくなるという現象に遭遇
 class L3Prefetcher:
-    def __init__(self,L3Cache,L4Cache,L4Prefetcher,dataDim, blockOffset=256) -> None:
+    def __init__(self,L3Cache,L4Cache,L4Prefetcher,dataDim, userIsComing,blockOffset=256) -> None:
+        # user is coming
+        self.userIsComing = userIsComing
+        
         # ToleranceArray
         self.Tols = [0.0001,0.001,0.01,0.1,0.2,0.3,0.4,0.5]
         self.dataDim = dataDim
@@ -117,9 +120,7 @@ class L3Prefetcher:
             if hops > self.radius:
                 self.L3Cache.cache.pop(blockId)
                 self.prefetchedSet.discard(blockId)
-        
-        # enqueBlockId.enqueueが完了すれば、あとは自動でプリフェッチが始まる。
-        # てか、ミスした後にこれをプリフェッチキューに入れてももう遅いとは思うんだけどね。（笑）
+
         self.enqueue_first_blockId(centerBlockId,0)
 
     # ブロック間の距離はシェビチェフ距離で計算。時間方向は足し算。
@@ -159,7 +160,7 @@ class L3Prefetcher:
             # print("L3 cache:")
             # self.L3Cache.printInfo()
             # self.L3Cache.printAllKeys()
-            if (not self.prefetch_q_empty()) and (self.L3Cache.usedSizeInMiB < self.L3Cache.capacityInMiB):
+            if (not self.prefetch_q_empty()) and (self.L3Cache.usedSizeInMiB < self.L3Cache.capacityInMiB) and (not self.userIsComing.is_locked()):
                 nextBlockId,distance = self.pop_front()
                 if distance > self.radius:
                     continue
@@ -222,7 +223,9 @@ class L3Prefetcher:
 
 # TODO 継承
 class L4Prefetcher:
-    def __init__(self,L4Cache,dataDim,blockSize):
+    def __init__(self,L4Cache,dataDim,blockSize,userIsComing):
+        # user is coming flag
+        self.userIsComing = userIsComing
         self.L4Cache = L4Cache
         self.Slicer = Slicer(blockOffset=blockSize)
         self.Tols = [0.0001,0.001,0.01,0.1,0.2,0.3,0.4,0.5]
@@ -332,6 +335,7 @@ class L4Prefetcher:
             # print("L4 cache:")
             self.L4Cache.printInfo()
             # self.L4Cache.printAllKeys()
+            # if (not self.prefetch_q_empty()) and (self.L4Cache.usedSizeInMiB < self.L4Cache.capacityInMiB) and (not self.userIsComing.is_locked()):
             if (not self.prefetch_q_empty()) and (self.L4Cache.usedSizeInMiB < self.L4Cache.capacityInMiB):
                 nextBlockId,distance = self.pop_front()
                 if distance > self.radius:
