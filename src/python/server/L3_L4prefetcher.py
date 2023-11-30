@@ -7,6 +7,7 @@ import asyncio
 import numpy as np
 import threading
 import time
+import sys
 
 # self-defined libraries
 import _mgard as mgard
@@ -37,13 +38,13 @@ class L3Prefetcher:
         self.prefetch_q = deque() # blocks going to get
         self.thread = None
         # キャッシュに入れるブロックの半径
-        self.radius = 3 # for now.
+        self.radius = 10 # for now.これは、本当はあれから計算したいのよね。
 
         # スレッドを止めるためのフラグ
         self.stop_thread = False
 
         # フェッチループを起動
-        if self.L3Cache.capacity == 0:
+        if self.L3Cache.capacityInMiB == 0:
             # L3キャッシュが0の時は、L3Prefetcherはスタートしないと
             pass
         else :
@@ -102,59 +103,15 @@ class L3Prefetcher:
 
 
     def getRadiusFromCapacity(self):
-        capacity = self.L3Cache.capacity
-        blockSize = self.blockOffset
-        # how to get radius? 4/3*pi*r**3が球の体積だけど、ここ、
-        # どうにかしてキャッシュの容量から、その容量を満たす半径を出したいんだよね。
-        # 2Dでは、8ブロックが隣接,3Dでは、26このブロックが隣接。4Dでは、80個らしい。
-        # n次元立方体の頂点の数は2^nで一般化できる。で、一つの頂点二着重くしたときに、これができれば、話は簡単だ
-        # おそらく。まて、
-        # n次元立方体の面の数は2nこ。
-        # 辺の数は、n*2^(n-1)こ
-        # 頂点の数は、2^n
-        # で、一つの立方体を考えると、面で接しているのが2n、辺で接しているのがn*2^(n-1)頂点で接しているのが、2^n
-        # つまり、2n + n*2^(n-1) + 2^n 
-        # n = 2の時、4 + 4 + 4 = 12いや間違ってるわ！
-        # 超体積から考えると、a^nなので、aが3の時、3^3 - 1 = 26
-        # 3^4 - 1 = 80
-        # 3^n - 1で合っているんじゃないか？そんな気がしてきたわ。26*3 + 2 も行けるね、4次元なら、
-        # これは、今自分がいる時間に26個隣接していて、隣接する時間それぞれに27 (26 + 1)あるからっていう式
-        # よくて、5ホップとかな気がする。
-        # ちなみに、4次元球の面積は、pi*pi*r*r*r*r/2
-        # また、4次元立方体の体積はa^4
-        # blockSize が合って、これは置いておいて、
-        # 例えば、16GiBって、何個の要素が入るのか？
-        # elements(個)*4(byte/個) = 16*1024*1024*1024 (bytes)
-        # elements = 4*1024*1024*1024個
-        # 4*1024*1024*1024 = a^4をとくとどうなる？
-        # 2^(8*4) = a^4
-        # a = 2^8 = 256だってさ。まじで？
-        # 今やりたいことは、キャッシュのサイズがあって、その周りなんホップまでそのキャッシュに入れられるか？のホップ数を
-        # 出したいんですよね。4次元で。とりあえず、一遍の長さ
-        # ホップするごとに増える要素数を数えればいいんだ
-        # n = 2 の時、　0ホップ　ー＞　1、 1ホップ　→　３、2ホップ、５
-        # n = 3の時0、０ホップ：１、1ホップ：２７、２ホップ、125(5*3)とかな気がしています。
-        # n = 4の時：0ホップ：1、1ホップ：81 (3*4):、2ホップ(5**4) = 625、3ホップ(7**4) = 2401、4ホップ(9**4) = 6551
-        # ホップ数は半径ですね。なるほど、こういう感じで増えていくのか。
-        # つまり、4次元空間で、半径2(今いるブロックから2ホップいるブロックから2ホップ以内の)のブロックを全部持ってこようと
-        # すると、なんと625個も必要になるんですね。これは大変ですね。
-        # 256**3*4*625 = 2**24*625 = 16*625MiB= 10GiBって感じですね。
-        # これ、半径を3にすると、どうなるんだろう？ってことで、1ブロックを256で計算した場合、
-        # 256**3*4*2401 = 16*2401MiB = 38416MiB = 38.4GiBって感じですね。これはいける。
-        # 半径を4にすると、どうなるのか？104.816GiBって感じになりました。だいぶ多いですね。Muffin2じゃないと評価が厳しいかもです。
-        # で、L1とL4は生データを保持しているので、サイズからすぐにホップ数が計算できると。
-        # 問題は、L3とL2よね。圧縮されている、さらに圧縮率にもばらつきがあるので、サイズから一位にホップ数を決めることができないのよね。
-        # まあそこは仕方がない。
-        radius = 10
+        capacity = self.L3Cache.capacityInMiB
+        blockSize = self.blockOffset**3
+        radius = 0
+        while((2*radius+1)**3 +2 <= capacity/blockSize):
+            radius += 1
+        print(f"radius={radius}")
         return radius
     
     def stopPrefetchingAndChangeCenter(self,centerBlockId):
-        # まず、一回プリフェッチをやめる。
-        # prefetch_Qを空にする。これをやるだけで、いい？
-        # 新しいセンターポイントがわかる。
-        # 新しいセンターポイントとキャッシュに入っている各要素との距離(ホップ数を計算する)。ここのけいさんが難しい。
-        # どうやってやるのか俺にはわからん calcHops()で計算
-        # で、そのホップ数が、指定半径(ホップ数)よりも大きい場合にはキャッシュからリムーブする。
         for blockId,blockValue in self.L3Cache.cache.items():
             hops = self.calcHops(centerBlockId,blockId)
             if hops > self.radius:
@@ -165,17 +122,10 @@ class L3Prefetcher:
         # てか、ミスした後にこれをプリフェッチキューに入れてももう遅いとは思うんだけどね。（笑）
         self.enqueue_first_blockId(centerBlockId,0)
 
-
-    # これの実装が急務です。
-    # ここは、ホップの計算をどうやっているかに深く依存します。
-    # 時間を変化させたら、それはもう1ホップとしてカウントしましょう。
+    # ブロック間の距離はシェビチェフ距離で計算。時間方向は足し算。
     def calHops(self,centerBlockId,targetBlockId):
         # 時間方向に何個ずれているかを確認まずは時間方向のホップ数があります。
         timeHops = abs(centerBlockId[1]-targetBlockId[1])
-
-        # 空間方向のホップ数を確認します。どうやって？だいきくんに教わりましたが、
-        # 結局最大のホップ数は、ベクトルの最大成分になります。これ大事！
-        # なぜかというと、考えてください。
         xHops = abs(centerBlockId[2]- targetBlockId[2])
         yHops = abs(centerBlockId[3]- targetBlockId[3])
         zHops = abs(centerBlockId[4]- targetBlockId[4])
@@ -189,14 +139,19 @@ class L3Prefetcher:
 
     def InformL3MissAndL4Hit(self,blockId):
         print("L3Miss and L4 Hit")
+        self.clearQueue()
+        self.enque_neighbor_blocks(blockId,0)
     
     def InformL3MissAndL4Miss(self,blockId):
         print("L3 Missed and L4 Miss:{}\n".format(blockId))
-        # TODO 何かしらのプリフェッチポリシーの変更を加える必要
-        pass
+        self.prefetch_q.append((blockId,0))
+        self.gonnaPrefetchSet.add(blockId)
 
     def InformL4MissByPref(self,blockId):
         print("L3 Prefetcher missed L4 and brought from disk:{}\n",blockId)
+
+    def InformUserPoint(self,blockId):
+        pass
 
     
     async def fetchLoop(self):
@@ -204,7 +159,7 @@ class L3Prefetcher:
             # print("L3 cache:")
             # self.L3Cache.printInfo()
             # self.L3Cache.printAllKeys()
-            if (not self.prefetch_q_empty()) and (len(self.L3Cache.cache) < self.L3Cache.capacity):
+            if (not self.prefetch_q_empty()) and (self.L3Cache.usedSizeInMiB < self.L3Cache.capacityInMiB):
                 nextBlockId,distance = self.pop_front()
                 if distance > self.radius:
                     continue
@@ -216,10 +171,7 @@ class L3Prefetcher:
                     except Exception as e:
                         pass
                     d = self.Slicer.sliceData(nextBlockId)
-                    # print("nextBlockId=",nextBlockId)
-                    # print("blocks size=",d.nbytes)
-                    # write to L4 also
-                    self.L4Cache.put(nextBlockId,d)
+                    self.L4Cache.put(nextBlockId,d) # write to L4 also (inclusive)
                     tol = nextBlockId[0]
                     compressed = self.compressor.compress(d,tol)
                     self.L3Cache.put(nextBlockId,compressed)
@@ -227,6 +179,7 @@ class L3Prefetcher:
                     print("L4 HIT! when L3 Prefetching from L4",nextBlockId,"distance:",distance)
                     tol = nextBlockId[0]
                     compressed = self.compressor.compress(original,tol)
+                    print("compressed size : {}".format(compressed.nbytes/1024/1024))
                     self.L3Cache.put(nextBlockId,compressed)
                 self.prefetchedSet.add(nextBlockId)
                 self.enque_neighbor_blocks(nextBlockId,distance)
@@ -235,7 +188,7 @@ class L3Prefetcher:
     
     def startPrefetching(self):
         self.stop_thread = False
-        if self.L3Cache.capacity > 0:
+        if self.L3Cache.capacityInMiB > 0:
             self.thread = threading.Thread(target=self.thread_func)
             self.thread.start()
             self.enqueue_first_blockId()
@@ -261,6 +214,11 @@ class L3Prefetcher:
         asyncio.set_event_loop(loop)
         loop.run_until_complete(self.fetchLoop())          
 
+    def clearQueue(self):
+        while not self.prefetch_q_empty():
+            blockId = self.pop_front()
+            self.gonnaPrefetchSet.discard(blockId)
+
 
 # TODO 継承
 class L4Prefetcher:
@@ -280,10 +238,10 @@ class L4Prefetcher:
         self.stop_thread = False
         self.thread = None
 
-        self.radius = 4
+        self.radius = 10 # for now
 
         # フェッチループ起動
-        if self.L4Cache.capacity == 0:
+        if self.L4Cache.capacityInMiB == 0:
             pass
         else :
             print("start L4 prefetcher")
@@ -356,24 +314,25 @@ class L4Prefetcher:
 
     def InformL3MissAndL4Hit(self,blockId):
         print("L3Miss and L4 Hit")
+        self.clearQueue()
+        self.enque_neighbor_blocks(blockId,0)
+
     
     def InformL3MissAndL4Miss(self,blockId):
         print("L3 Miss and L4 Miss:{}\n".format(blockId))
-        # TODO 何かしらのプリフェッチポリシーの変更を加える必要
-        pass
+        self.prefetch_q.append((blockId,0))
+        self.gonnaPrefetchSet.add(blockId)
 
     def InformL4MissByPref(self,blockId):
         print("L3 Prefetcher missed L4 and brought from disk:{}\n",blockId)
 
-    def clearPrifetchingQ(self):
-        self.prefetch_q = deque()
 
     async def fetchLoop(self):
         while not self.stop_thread:
             # print("L4 cache:")
-            # self.L4Cache.printInfo()
+            self.L4Cache.printInfo()
             # self.L4Cache.printAllKeys()
-            if (not self.prefetch_q_empty()) and (len(self.L4Cache.cache) < self.L4Cache.capacity):
+            if (not self.prefetch_q_empty()) and (self.L4Cache.usedSizeInMiB < self.L4Cache.capacityInMiB):
                 nextBlockId,distance = self.pop_front()
                 if distance > self.radius:
                     continue
@@ -387,7 +346,7 @@ class L4Prefetcher:
 
     def startPrefetching(self):
         self.stop_thread = False
-        if self.L4Cache.capacity > 0:
+        if self.L4Cache.capacityInMiB > 0:
             self.thread = threading.Thread(target=self.thread_func)
             self.thread.start()
             self.enqueue_first_blockId()
@@ -413,15 +372,18 @@ class L4Prefetcher:
         asyncio.set_event_loop(loop)
         loop.run_until_complete(self.fetchLoop())       
 
-  
+    def clearQueue(self):
+        while not self.prefetch_q_empty():
+            blockId = self.pop_front()
+            self.gonnaPrefetchSet.discard(blockId)
+ 
+    def InformUserPoint(self,blockId):
+        pass
 
+
+# ちぇびちぇふ距離
 def calHops(centerBlockId,targetBlockId):
-        # 時間方向に何個ずれているかを確認まずは時間方向のホップ数があります。
         timeHops = abs(centerBlockId[1]-targetBlockId[1])
-
-        # 空間方向のホップ数を確認します。どうやって？だいきくんに教わりましたが、
-        # 結局最大のホップ数は、ベクトルの最大成分になります。これ大事！
-        # なぜかというと、考えてください。
         xHops = abs(centerBlockId[2]- targetBlockId[2])
         yHops = abs(centerBlockId[3]- targetBlockId[3])
         zHops = abs(centerBlockId[4]- targetBlockId[4])
