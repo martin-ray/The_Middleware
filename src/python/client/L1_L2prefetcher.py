@@ -14,7 +14,7 @@ from NetInterface import NetIF
 from decompressor import Decompressor
 
 class L2Prefetcher:
-    def __init__(self,L2Cache,maxTimestep=9,serverURL="http://localhost:8080") -> None:
+    def __init__(self,L2Cache,maxTimestep=9,serverURL="http://localhost:8080",OnSwitch=True) -> None:
         self.URL = serverURL
 
         # ToleranceArray
@@ -32,7 +32,7 @@ class L2Prefetcher:
         self.stop_thread = False
 
         # フェッチループを起動
-        if self.L2Cache.capacityInMiB == 0:
+        if self.L2Cache.capacityInMiB == 0 and OnSwitch == False:
             pass
         else:
             self.thread = threading.Thread(target=self.thread_func)
@@ -148,7 +148,7 @@ class L2Prefetcher:
 
 # TODO 継承
 class L1Prefetcher:
-    def __init__(self,L1Cache,L2Cache,maxTimestep=9,offsetSize=256):
+    def __init__(self,L1Cache,L2Cache,maxTimestep=9,offsetSize=256,OnSwitch=True):
         # 自分で持っていた方がいいと判断。
         
         self.L1Cache = L1Cache
@@ -170,7 +170,7 @@ class L1Prefetcher:
         self.stop_thread = False
 
         # フェッチループ起動
-        if self.L1Cache.capacityInMiB == 0:
+        if self.L1Cache.capacityInMiB == 0 and OnSwitch == False:
             pass
         else:
             self.thread = threading.Thread(target=self.thread_func)
