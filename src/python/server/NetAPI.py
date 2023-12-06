@@ -9,6 +9,7 @@ from L3_L4prefetcher import L3Prefetcher,L4Prefetcher
 import time
 import threading
 from flag import Flag
+import time
 
 
 class HttpAPI:
@@ -98,6 +99,8 @@ class HttpAPI:
     def getUsr(self,blockId):
         # ユーザが来たので、ほかのリソースはみんないったん止まってくださいってことです。
         self.userIsComing.set_lock()
+        print("locked the GPU access")
+        start_time = time.time()
         tol = blockId[0]
         L3data = self.L3Cache.get(blockId)
         self.numReqs += 1
@@ -107,22 +110,32 @@ class HttpAPI:
                 self.numL3L4Miss += 1
                 self.L3Pref.InformL3MissAndL4Miss(blockId)
                 self.L4Pref.InformL3MissAndL4Miss(blockId) # プリフェッチポリシーの変更はプリふぇっちゃー側で変更してください
+                start_reading_time = time.time()
                 original = self.Slicer.sliceData(blockId)
+                end_reading_time = time.time()
                 compressed = self.compressor.compress(original,tol)
+                end_compression_time = time.time()
                 self.userIsComing.unlock()
+                print(f"time_to_read={end_reading_time-start_reading_time}\ntime_to_compress={end_compression_time-end_reading_time}")
                 return compressed
             else:
                 self.numL4Hit += 1
                 self.L3Pref.InformL3MissAndL4Hit(blockId)
                 self.L4Pref.InformL3MissAndL4Hit(blockId)
+                start_compressing_time = time.time()
+                compressed = self.compressor.compress(L4data,tol)
+                end_compressing_time = time.time()
+                print(f"time_to_compress={end_compression_time-end_reading_time}")
                 self.userIsComing.unlock()
-                return self.compressor.compress(L4data,tol)
+                return compressed
             
         else:
             self.numL3Hit += 1
             self.L3Pref.InformL3Hit(blockId)
             self.L4Pref.InformL3Hit(blockId)
             self.userIsComing.unlock()
+            L3_hit_time = time.time()
+            print(f"time_to_read_from_l3={L3_hit_time-start_time}")
             return L3data
         
 
