@@ -339,6 +339,7 @@ class L4Prefetcher:
             self.L4Cache.printInfo()
             # self.L4Cache.printAllKeys()
             # if (not self.prefetch_q_empty()) and (self.L4Cache.usedSizeInMiB < self.L4Cache.capacityInMiB) and (not self.userIsComing.is_locked()):
+            # ここだろ。ここで競合が発生するのだ。つまり、ここを解消すればいいのだ、ロックをかけるのだ！！
             if (not self.prefetch_q_empty()) and (self.L4Cache.usedSizeInMiB < self.L4Cache.capacityInMiB):
                 nextBlockId,distance = self.pop_front()
                 if distance > self.radius:
