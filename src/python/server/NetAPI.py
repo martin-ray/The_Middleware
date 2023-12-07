@@ -98,7 +98,6 @@ class HttpAPI:
     # 呼び出し側が、別スレッドで実行
     def getUsr(self,blockId):
         # ユーザが来たので、ほかのリソースはみんないったん止まってくださいってことです。
-        self.userIsComing.set_lock()
         print("locked the GPU access")
         start_time = time.time()
         tol = blockId[0]
@@ -113,6 +112,7 @@ class HttpAPI:
                 start_reading_time = time.time()
                 original = self.Slicer.sliceData(blockId)
                 end_reading_time = time.time()
+                self.userIsComing.set_lock()
                 compressed = self.compressor.compress(original,tol)
                 end_compression_time = time.time()
                 self.userIsComing.unlock()
@@ -123,6 +123,7 @@ class HttpAPI:
                 self.L3Pref.InformL3MissAndL4Hit(blockId)
                 self.L4Pref.InformL3MissAndL4Hit(blockId)
                 start_compressing_time = time.time()
+                self.userIsComing.set_lock()
                 compressed = self.compressor.compress(L4data,tol)
                 end_compressing_time = time.time()
                 print(f"time_to_compress={end_compression_time-end_reading_time}")
@@ -133,7 +134,6 @@ class HttpAPI:
             self.numL3Hit += 1
             self.L3Pref.InformL3Hit(blockId)
             self.L4Pref.InformL3Hit(blockId)
-            self.userIsComing.unlock()
             L3_hit_time = time.time()
             print(f"time_to_read_from_l3={L3_hit_time-start_time}")
             return L3data
