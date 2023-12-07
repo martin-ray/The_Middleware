@@ -160,6 +160,9 @@ class L3Prefetcher:
             # print("L3 cache:")
             # self.L3Cache.printInfo()
             # self.L3Cache.printAllKeys()
+            # なんかここですごく無駄が生じてる気がする。というのも、読み出しは別にuserIsCominにロックがかかっててもやっていいはずでしょ？そこだよね。おそらく。
+            # TODO いや、つまり、ユーザが来てるときはL3Prefetcherすらもよみださない、ということか。そうか、じゃあ、　L4プリフェッチャとユーザの読み出しで競合が起こっていると考えた方がいいのか。なるほど。
+            # 理解したぞ！
             if (not self.prefetch_q_empty()) and (self.L3Cache.usedSizeInMiB < self.L3Cache.capacityInMiB) and (not self.userIsComing.is_locked()):
                 nextBlockId,distance = self.pop_front()
                 if distance > self.radius:
