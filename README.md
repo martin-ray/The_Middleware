@@ -1,12 +1,6 @@
 # The_Middleware
 A middleware to support on-demand massive-scientific-data-visualization 
 
-
-
-# The_Middleware
-A middleware to support on-demand massive-scientific-data-visualization 
-
-
 # HTTP interface
 
 ## header type
@@ -62,29 +56,6 @@ header = {
 ## body
 compressed array
 
-
-## prefetch algorithm
-### inclusive
-1. 単なるLRU。プリフェッチもなし
-2. 適当な一からプリフェッチを開始し、ミスが発生したら、その点から再びプリフェッチを開始するいっぱいになるまで。
-いっぱいになった後も続ける？
-3. ユーザが見ている点を各プリふぇっちゃーが把握していて、それを中心になんホップかわからないけど、みんなで一緒に動く漢字
-
-### exclusive
-4. これがメイン、というか提案手法。オニオンキャッシュ。onion cache
-ユーザが見ている地点を各キャッシュが包む感じにする。これが一番効率がいいよね。そして、ユーザの動きも把握している、って感じで。
-１－２ホップをL1で
-３－４ホップをL2で
-５－６ホップをL3で
-７－８ホップをL4で
-管理するみたいな感じ。
-ユーザの動きに合わせて全体がよっこいしょって動く。これ面白いな。
-
-## replacement algorithm
-単なるLRU?
-ユーザ追尾型？radiusサーチ？
-
-## キャッシュの大きさは一定。これは変わりません
 
 # NEW TODO
 - [ ] HDF5 -> TileDBに変更。これでミドルウェア単体の性能を評価できる。
