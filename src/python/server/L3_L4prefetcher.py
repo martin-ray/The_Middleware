@@ -272,7 +272,7 @@ class L4Prefetcher:
     ####################### 初期化系メソッド ###########################
             
     def getRadiusFromCapacity(self):
-        capacity = self.L3Cache.capacityInMiB
+        capacity = self.L4Cache.capacityInMiB
         blockSize = self.blockOffset**3
         radius = 0
         while((2*radius+1)**3 +2 <= capacity/blockSize):
@@ -303,7 +303,7 @@ class L4Prefetcher:
         self.gonnaPrefetchSet = set()
         self.prefetch_q = deque()
         self.blockOffset = blockOffset
-        self.radius = self.getRadiusFromCapacity()*self.estimatedCompratio
+        self.radius = self.getRadiusFromCapacity()
 
     ######################## フェッチスレッド用メソッド #########################
     
@@ -363,6 +363,33 @@ class L4Prefetcher:
                         self.prefetch_q.append(((tol,timestep, x+dx, y+dy, z+dz),distance))
                         self.gonnaPrefetchSet.add((tol,timestep, x+dx, y+dy, z+dz))
 
+    ############ ミスをした時の挙動を決定するメソッド #################
+                        
+    def InformL3Hit(self,blockId):
+        print("L3 hit! nice! from L4 prefetcher")
+        pass
+
+    def InformL3MissAndL4Hit(self,blockId):
+        print("L3Miss and L4 Hit")
+        self.clearQueue() # ここで結構時間食ってる説あるよね。
+        self.enque_neighbor_blocks(blockId,0)
+
+    def InformL3MissAndL4Miss(self,blockId):
+        print("L3 Miss and L4 Miss:{}\n".format(blockId))
+        # self.prefetch_q.append((blockId,0)) # いや、これはもうすでに取ってあるから今から取りに行ったってもう意味ないのよ。
+        # self.gonnaPrefetchSet.add(blockId)
+        self.prefetchedSet.add(blockId)
+        self.clearQueue() # ここで結構時間食ってる説あるよね。
+        self.enque_neighbor_blocks(blockId,0)
+
+    def InformL4MissByPref(self,blockId):
+        print("L3 Prefetcher missed L4 and brought from disk:{}\n",blockId)
+
+    def clearQueue(self):
+        while not self.prefetch_q_empty():
+            blockId = self.pop_front()
+            self.gonnaPrefetchSet.discard(blockId)                       
+
     ############ 置換方針とプリフェッチ方針を決定するメソッド #####################
                         
     def pop_front(self):
@@ -393,30 +420,7 @@ class L4Prefetcher:
         self.prefetch_q.append((blockId,d))
         self.gonnaPrefetchSet.add(blockId)
 
-    def InformL3Hit(self,blockId):
-        print("L3 hit! nice! from L4 prefetcher")
-        pass
 
-    def InformL3MissAndL4Hit(self,blockId):
-        print("L3Miss and L4 Hit")
-        self.clearQueue() # ここで結構時間食ってる説あるよね。
-        self.enque_neighbor_blocks(blockId,0)
-
-    def InformL3MissAndL4Miss(self,blockId):
-        print("L3 Miss and L4 Miss:{}\n".format(blockId))
-        # self.prefetch_q.append((blockId,0)) # いや、これはもうすでに取ってあるから今から取りに行ったってもう意味ないのよ。
-        # self.gonnaPrefetchSet.add(blockId)
-        self.prefetchedSet.add(blockId)
-        self.clearQueue() # ここで結構時間食ってる説あるよね。
-        self.enque_neighbor_blocks(blockId,0)
-
-    def InformL4MissByPref(self,blockId):
-        print("L3 Prefetcher missed L4 and brought from disk:{}\n",blockId)
-
-    def clearQueue(self):
-        while not self.prefetch_q_empty():
-            blockId = self.pop_front()
-            self.gonnaPrefetchSet.discard(blockId)
  
     def InformUserPoint(self,blockId):
         pass
