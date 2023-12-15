@@ -21,8 +21,11 @@ class HttpAPI:
         self.L3Cache = LRU_cache(L3CacheSize,offsetSize=blockSize)
         self.L4Cache = LRU_cache(L4CacheSize,offsetSize=blockSize)
         self.compressor = compressor(self.L3Cache)
-        self.L4Pref = L4Prefetcher(self.L4Cache,dataDim=self.DataDim,blockSize=blockSize,userIsComing = self.userIsComing)
-        self.L3Pref = L3Prefetcher(self.L3Cache, self.L4Cache,dataDim=self.DataDim,L4Prefetcher=self.L4Pref,blockOffset=blockSize,userIsComing = self.userIsComing)
+        self.L4Pref = L4Prefetcher(self.L4Cache,dataDim=self.DataDim,blockSize=blockSize,
+                                   userIsComing = self.userIsComing,slicer=self.Slicer)
+        self.L3Pref = L3Prefetcher(self.L3Cache, self.L4Cache,dataDim=self.DataDim,
+                                   L4Prefetcher=self.L4Pref,blockOffset=blockSize,
+                                   userIsComing = self.userIsComing,slicer=self.Slicer)
         self.sendQ = deque() # いる？
         self.blockSize = blockSize
         
@@ -125,8 +128,8 @@ class HttpAPI:
                 start_compressing_time = time.time()
                 self.userIsComing.set_lock()
                 compressed = self.compressor.compress(L4data,tol)
-                end_compressing_time = time.time()
-                print(f"time_to_compress={end_compression_time-end_reading_time}")
+                end_compression_time = time.time()
+                print(f"time_to_compress={end_compression_time-start_compressing_time}")
                 self.userIsComing.unlock()
                 return compressed
             

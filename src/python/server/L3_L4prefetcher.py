@@ -18,7 +18,7 @@ from compressor import compressor
 
 # L3キャッシュとL4キャッシュプリふぇっちゃで同じスライサーを共有すると、なぜか片方が全く取れなくなるという現象に遭遇
 class L3Prefetcher:
-    def __init__(self,L3Cache,L4Cache,L4Prefetcher,dataDim, userIsComing,blockOffset=256) -> None:
+    def __init__(self,L3Cache,L4Cache,L4Prefetcher,dataDim, userIsComing,blockOffset=256,slicer=None) -> None:
         # user is coming
         self.userIsComing = userIsComing
         
@@ -33,7 +33,12 @@ class L3Prefetcher:
         self.L3Cache = L3Cache
         self.L4Cache = L4Cache
         # これね、L3PrefetcherとL4Prefetcherで別々のもの持ってないとなんか片方が一生使えなくなる
-        self.Slicer = Slicer(blockOffset=blockOffset)
+        
+        self.Slicer = slicer
+        if slicer == None:
+            self.Slicer = Slicer(blockOffset=blockOffset)
+        
+
         self.compressor = compressor(self.L3Cache)
         self.L4Pref = L4Prefetcher
         self.gonnaPrefetchSet = set()
@@ -175,6 +180,7 @@ class L3Prefetcher:
                     except Exception as e:
                         pass
                     d = self.Slicer.sliceData(nextBlockId)
+                    print("L3 prefetcher is reading!! nice!")
                     self.L4Cache.put(nextBlockId,d) # write to L4 also (inclusive)
                     tol = nextBlockId[0]
                     compressed = self.compressor.compress(d,tol)
@@ -226,11 +232,15 @@ class L3Prefetcher:
 
 # TODO 継承
 class L4Prefetcher:
-    def __init__(self,L4Cache,dataDim,blockSize,userIsComing):
+    def __init__(self,L4Cache,dataDim,blockSize,userIsComing,slicer=None):
         # user is coming flag
         self.userIsComing = userIsComing
         self.L4Cache = L4Cache
-        self.Slicer = Slicer(blockOffset=blockSize)
+        self.Slicer = slicer
+
+        if slicer == None:
+            self.Slicer = Slicer(blockOffset=blockSize)
+        
         self.Tols = [0.0001,0.001,0.01,0.1,0.2,0.3,0.4,0.5]
         self.dataDim = dataDim
         self.maxTimestep = dataDim[0]
@@ -345,6 +355,7 @@ class L4Prefetcher:
                 if distance > self.radius:
                     continue
                 data = self.Slicer.sliceData(nextBlockId)
+                print("L4 prefetcher is reading!!! nice!")
                 self.L4Cache.put(nextBlockId,data)
                 self.prefetchedSet.add(nextBlockId)
                 self.enque_neighbor_blocks(nextBlockId,distance)
