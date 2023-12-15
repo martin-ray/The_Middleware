@@ -1,11 +1,12 @@
 import h5py 
 import numpy as np
 import _mgard as mgard
-
+import tiledb
+import threading
 
 class Slicer:
     # default 引数
-    def __init__(self,blockOffset=256,filename="/scratch/aoyagir/step1_500_test.h5") -> None:
+    def __init__(self,blockOffset=256,filename="/scratch/aoyagir/step1_256_test_0902.h5") -> None:
         self.filename = filename
         self.blockOffset = blockOffset
         self.file = h5py.File(filename, 'r')
@@ -14,6 +15,7 @@ class Slicer:
         self.xMax = self.dataset.shape[1]
         self.yMax = self.dataset.shape[2]
         self.zMax = self.dataset.shape[3]
+        self.lock = threading.Lock()
         self.printDataInfo()
 
     # Access specific elements in the concatenated array
@@ -33,21 +35,20 @@ class Slicer:
     
     # blockId = (tol,timestep,x,y,z)
     def sliceData(self,blockId):
+        # with self.lock:
         _ = blockId[0]
         t = blockId[1]
         x = blockId[2]
         y = blockId[3]
         z = blockId[4]
-        print("silcing",x,x+self.blockOffset,y,y+self.blockOffset,z,z+self.blockOffset)
         return self.slice_single_step(t,x,x+self.blockOffset,y,y+self.blockOffset,z,z+self.blockOffset)
-    
+
     def changeBlockSize(self,blockSize):
         print("changin block size from {} to {}".format(self.blockOffset,blockSize))
         self.blockOffset = blockSize
     
     def printBlocksize(self):
         print(self.blockOffset)
-
 
     def printDataInfo(self):
         print("##### Row data INFO #####")
@@ -56,28 +57,25 @@ class Slicer:
         
     def getDataDim(self):
         return self.dataset.shape
+
+
+class TileDBSlicer:
+    def __init__(self,blockOffset=256,filename="/scratch/aoyagir/step1_256_test_0902.h5") -> None:
+        self.filename = filename
+        self.blockOffset = blockOffset
+        self.file = h5py.File(filename, 'r')
+        self.dataset = self.file['data']
+        self.timesteps = self.dataset.shape[0]
+        self.xMax = self.dataset.shape[1]
+        self.yMax = self.dataset.shape[2]
+        self.zMax = self.dataset.shape[3]
+        self.lock = threading.Lock()
+        self.printDataInfo()
+
+    def printDataInfo(self):
+        print("##### Row data INFO #####")
+        print("timesteps:{}\nx:{}\ny:{}\nz:{}\n"
+              .format(self.timesteps,self.xMax,self.yMax,self.zMax))
     
-if __name__ == "__main__":
-    slicer = Slicer()
-    original = slicer.slice_single_step(1, 0, 100, 0, 100, 0, 100)
-    print(original.shape)
-    print(type(original))
-    tol = 0.1
+    pass
 
-    print("original=",original.nbytes,"bytes")
-    print("original dtype",original.dtype)
-
-    compressed = mgard.compress(original, tol, 0)
-    print("compressed=",compressed.nbytes,"bytes")
-    print("compressed type",type(compressed))
-    print("compressed dtype",compressed.dtype)
-    decompressed = mgard.decompress(compressed)
-    print("compression ratio:",original.nbytes/compressed.nbytes)
-    e = original - decompressed
-    print("max-e:",e.max())
-    print("decompressed:",decompressed.nbytes,"bytes")
-    print("decompressed dtype",decompressed.dtype)
-    print("convert to float32")
-    decompressed = decompressed.astype(np.float32)
-    print("converted decompressed dtype",decompressed.dtype)
-    print("size",decompressed.nbytes)
