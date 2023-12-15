@@ -15,7 +15,7 @@ interface = "eno1"
 initial_latency = "0ms"
 
 # simTim : 追加してくれ
-def OneExp(tol,L1Size,L2Size,L3Size,L4Size,blockSize,request_sequence,analisisTime=0,networkLatency=0):
+def OneExp(tol,L1Size,L2Size,L3Size,L4Size,blockSize,request_sequence,analisisTime=0,networkLatency=0,num_gpus=1):
     reqs = request_sequence
     reqsTiledb = copy.deepcopy(reqs)
     print(reqs)
@@ -28,8 +28,6 @@ def OneExp(tol,L1Size,L2Size,L3Size,L4Size,blockSize,request_sequence,analisisTi
     
     # box of every latency
     latencies = []
-
-
     PropBytes = 0
 
     while len(reqs) > 0:
@@ -53,6 +51,7 @@ def OneExp(tol,L1Size,L2Size,L3Size,L4Size,blockSize,request_sequence,analisisTi
     median = np.percentile(latencies, 50)
     q3 = np.percentile(latencies, 75)
     iqr = q3 - q1
+    # lower_boundが何かわからないんだけれども、maxとminではないってことがわかった。
     lower_bound = q1 - 1.5 * iqr
     upper_bound = q3 + 1.5 * iqr
     std_dev = np.std(latencies)
@@ -82,7 +81,7 @@ def OneExp(tol,L1Size,L2Size,L3Size,L4Size,blockSize,request_sequence,analisisTi
     print(f"l1={L1Size},l2={L2Size},l3={L3Size},l4={L4Size}")
 
     # L3 L4の変化はTileDBには関係ない。つまり、
-    if(L3Size + L4Size != 0 and analtime != 0) :
+    if(L3Size + L4Size != 0 or analisisTime != 0) :
         # 一回だけでいいのです！    
         print("skipping tiledb")
         stats["TiledbAverageLatency"] = 0
@@ -118,38 +117,40 @@ if __name__ == "__main__":
 
     print("start program")
     # tols = [0.3, 0.1 , 0.01, 0.001, 0] # 0 for no compress
-    tols = [0.1]
+    tols = [0.1,0.05,0.01,0.005,0.001,0.0005,0.0001]
 
     # L1Sizes = [0,512, 1024, 2048, 4096, 4096*2 ,4096*4]
     L1Sizes = [0,512,512*2,512*4,512*8]
 
     # L2Sizes = [0,512, 1024, 2048, 4096]
-    L2Sizes = [0,512]
+    L2Sizes = [0,512,1024]
 
     #L3Sizes = [0,512, 1024, 2048, 4096]
-    L3Sizes = [0,512]
+    L3Sizes = [0,512,1024]
 
     # L4Sizes = [0,512, 1024, 2048, 4096, 4096*2 ,4096*4]
     L4Sizes = [0,2048,2048*2,2048*4,2048*8]
     # blockSizes = [64, 128, 256, 512]
     
+    # 大事なのは、ブロックはやり取りをする基本単位である、というだけで、リクエストの大きさは変えないってことね。大事。
     blockSizes = [256]
     
-    num_requests = [30,100,200,400,800]
+    num_requests = [50, 100, 200, 400, 800]
     
-    randomRatios = np.arange(0,100,25) # 何パーセントランダムか？0の時は、完全に連続。100の時は完全にランダム
+    # randomRatios = np.arange(0,100,25) # 何パーセントランダムか？0の時は、完全に連続。100の時は完全にランダム
+    randomRatios = 0
 
-    anal_time = [0, 0.1, 0.3, 0.6,  1.0]
+    anal_time = [0, 0.1, 0.3, 0.5]
 
     #randomRatios = np.linspace(0, 100, 25) / 100.0
     header = ['tol','L1Size', 'L2Size', 'L3Size', 'L4Size', 'blkSize',
                'nReqs', 'reqPatrn', 'nL1Hits', 
                'nL2Hits', 'nL3Hits', 'nL4Hits','nAllMis',
                'AvrLat','TDbArvLat','anlTime',"netLat",
-               'q1','q3','median','iqr','lower_bound','upper_bound',"std_dev"] # num_requests = numL1Hits + numL2Hits + numL3Hits + numL4Hits
+               'q1','q3','median','iqr','lower_bound','upper_bound',"std_dev","num_gpus"] # num_requests = numL1Hits + numL2Hits + numL3Hits + numL4Hits
 
 
-        # Create the file name based on the timestamp
+    # Create the file name based on the timestamp
     current_datetime =  datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')  # Adjust the format as needed
 
     # Construct the file name
@@ -170,7 +171,6 @@ if __name__ == "__main__":
         for blockSize in blockSizes:
             for num_request in num_requests:
                 for randomRatio in randomRatios:
-
                     reqMaker = requestMaker(blockSize,maxtimestep)
                     print("create request maker")
                     reqs = reqMaker.randAndcontMixRequester(num_request,randomRatio)
