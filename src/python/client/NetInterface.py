@@ -19,7 +19,7 @@ class NetIF:
         self.sendQ = deque() 
         self.URL = serverIp
         # ここで、送信スレッドを起動する
-        self.thread = threading.Thread(target=self.thread_func)
+        self.thread = threading.Thread(target=self.net_thread_func)
         self.thread.start()
 
     
@@ -74,8 +74,11 @@ class NetIF:
     def requestStats(self):
 
         header = {
-            
+            'type':'getStats'
         }
+
+        response = requests.get(self.URL, headers=header).json()
+        return response
     
     def IsSendQEmpty(self):
         if(len(self.sendQ) == 0):
@@ -132,19 +135,19 @@ class NetIF:
                     'y': str(BlockId[3]),
                     'z': str(BlockId[4])
                 }
-
-                response = requests.get(self.URL,headers=header)
-                self.L2Cache.put(BlockId,response.content)
-
-    def thread_func(self):
+                try:
+                    response = requests.get(self.URL,headers=header)
+                    self.L2Cache.put(BlockId,response.content)
+                except Exception as e:
+                    print("送信スレッドでexeptionが発生!")
+                    print(e)
+                    
+    def net_thread_func(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(self.sendLoop())   
 
 
-    # TODO websocketのついか
-    async def sendLoopSocket(websocket):
-        pass
-
     # TODO gridFTPの追加?
     # TODO 時間があったら、いい感じの送信プロトコルを追加。なんかいいやつあるかなー。
+    # TODO CPPで独自プロトコルを実装してやるのが一番いいと感じている。まじで。
