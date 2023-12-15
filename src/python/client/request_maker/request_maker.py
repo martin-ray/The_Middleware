@@ -96,11 +96,14 @@ class requestMaker:
         # firstRequest = (self.targetTol,0,0,0,0)
         requests.append(firstRequest)
         previousRequest = firstRequest
-        req_n = 0
+        req_n = 1
         while req_n < length:
             num = self.random_float()
+            # print(f"num={num},randomToCont={randomToContRatio},req_n={req_n}")
+
             if num > randomToContRatio:
-                # continuous
+                # # continuous
+                # print("continuous")
                 direction = self.random_direction()
                 nexRequest = None
                 if direction == 'timestep':
@@ -127,22 +130,23 @@ class requestMaker:
                                 previousRequest[2],
                                 previousRequest[3],
                                 previousRequest[4] + self.random_choice()*self.blockSize)
-                
-                # 整形
-                if nexRequest[1] < 0 or nexRequest[1] >= self.maxTimestep - self.blockSize:
+                    
+                # 範囲を超えていたら整形
+                if nexRequest[1] < 0 or nexRequest[1] > self.maxTimestep:
                     pass
-                elif nexRequest[2] < 0 or nexRequest[2] >= self.maxX - self.blockSize:
+                elif nexRequest[2] < 0 or nexRequest[2] > self.maxX - self.blockSize:
                     pass
-                elif nexRequest[3] < 0 or nexRequest[3] >= self.maxY - self.blockSize:
+                elif nexRequest[3] < 0 or nexRequest[3] > self.maxY - self.blockSize:
                     pass
-                elif nexRequest[4] < 0 or nexRequest[4] >= self.maxZ - self.blockSize:
+                elif nexRequest[4] < 0 or nexRequest[4] > self.maxZ - self.blockSize:
                     pass
                 else :
                     requests.append(nexRequest) 
-                    req_n += 1 
-                    previousReq = nexRequest
+                    req_n += 1  
+                    previousRequest = nexRequest
 
             else:
+                print("ランダム")
                 nextReq = (self.targetTol,
                        self.random_timestep(),
                        self.random_xyz(),
