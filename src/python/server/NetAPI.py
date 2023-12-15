@@ -15,22 +15,21 @@ import time
 class HttpAPI:
     def __init__(self,L3CacheSize=4096*8,L4CacheSize=0,blockSize=256,serverIp="http://localhost:8080"):
         # user is coming flag to control the GPU and storage resource
-        self.userIsComing = Flag()
+        self.userUsingGPU = Flag()
+        self.userUsingStorage = Flag()
         self.Slicer = Slicer(blockOffset=blockSize)
         self.DataDim = self.Slicer.getDataDim()
         self.L3Cache = LRU_cache(L3CacheSize,offsetSize=blockSize)
         self.L4Cache = LRU_cache(L4CacheSize,offsetSize=blockSize)
         self.compressor = compressor(self.L3Cache)
-        self.L4Pref = L4Prefetcher(self.L4Cache,dataDim=self.DataDim,blockSize=blockSize,userIsComing = self.userIsComing)
-        self.L3Pref = L3Prefetcher(self.L3Cache, self.L4Cache,dataDim=self.DataDim,L4Prefetcher=self.L4Pref,blockOffset=blockSize,userIsComing = self.userIsComing)
+        self.L4Pref = L4Prefetcher(self.L4Cache,dataDim=self.DataDim,blockSize=blockSize,userUsingGPU=self.userUsingGPU,userUsingStorage=self.userUsingStorage)
+        self.L3Pref = L3Prefetcher(self.L3Cache, self.L4Cache,dataDim=self.DataDim,
+                                   L4Prefetcher=self.L4Pref,blockOffset=blockSize,
+                                   userUsingGPU=self.userUsingGPU,userUsingStorage=self.userUsingStorage)
         self.sendQ = deque() # いる？
         self.blockSize = blockSize
-        
-        # for statistics (ロック必要かな？そんな気がしています)
-        # いや、スタッツもやっぱり取るの難しいよね、普通にうん。マルチスレッドで動いているから、
-        # ここはロックとかかけずに頑張ってもらわないと、そもそも性能に影響してしまう。ので、スタッツの結果はちょっと連れているかもしれないということは頭に入れよう
-        # いや、結局、ユーザがどこにヒットするかってのを見たいわけだ。つまり、いまは、プリフェッチもユーザも同じリクエストとして一緒くたに扱われている
-        # が、本来は、ユーザはユーザで扱われるべき。ユーザのリクエストは必ず逐次的に来るので。
+
+        # for stats
         self.numReqs = 0
         self.numL3Hit = 0
         self.numL4Hit = 0
@@ -105,29 +104,40 @@ class HttpAPI:
         self.numReqs += 1
         if L3data is None:
             L4data = self.L4Cache.get(blockId)
+
             if L4data is None:
                 self.numL3L4Miss += 1
-                self.L3Pref.InformL3MissAndL4Miss(blockId)
+                self.L3Pref.InformL3MissAndL4Miss(blockId) # ここで知らせることで、2じゅうにフェッチすることを防いでいます。
                 self.L4Pref.InformL3MissAndL4Miss(blockId) # プリフェッチポリシーの変更はプリふぇっちゃー側で変更してください
+                
+                # ここ、L3とL4キャッシュに登録しなくても大丈夫か？まあいいか。
                 start_reading_time = time.time()
+                self.userUsingStorage.set_lock()
                 original = self.Slicer.sliceData(blockId)
+                self.userUsingStorage.unlock()
                 end_reading_time = time.time()
-                self.userIsComing.set_lock()
+                
+                self.userUsingGPU.set_lock()
                 compressed = self.compressor.compress(original,tol)
+                self.userUsingGPU.unlock()
                 end_compression_time = time.time()
-                self.userIsComing.unlock()
+                
                 print(f"time_to_read={end_reading_time-start_reading_time}\ntime_to_compress={end_compression_time-end_reading_time}")
                 return compressed
+            
             else:
                 self.numL4Hit += 1
+
                 self.L3Pref.InformL3MissAndL4Hit(blockId)
                 self.L4Pref.InformL3MissAndL4Hit(blockId)
+                
                 start_compressing_time = time.time()
-                self.userIsComing.set_lock()
+                self.userUsingGPU.set_lock()
                 compressed = self.compressor.compress(L4data,tol)
+                self.userUsingGPU.unlock()
                 end_compressing_time = time.time()
-                print(f"time_to_compress={end_compression_time-end_reading_time}")
-                self.userIsComing.unlock()
+                
+                print(f"time_to_compress={end_compressing_time-start_compressing_time}")
                 return compressed
             
         else:
