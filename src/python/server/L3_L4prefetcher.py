@@ -32,9 +32,8 @@ class L3Prefetcher:
         # すでに取ってきたブロックのセット
         self.prefetchedSet = set()
 
-        # 取りに行く予定があるブロックが順番に入っているセット。この順番を動的に管理したいのよね。
-        # つまり、ここは、ユーザが見ているブロックとの距離が小さい順に並ぶようになっていてほしいのよね。
-        self.prefetch_q = deque() # blocks going to get
+        # 取りに行く予定があるブロックが順番に入っているセット。
+        self.prefetch_q = deque() 
         self.thread = None
 
         # tol = 0.1の場合は、大体圧縮率が25倍なので、25倍はいるってことですね。
@@ -203,11 +202,14 @@ class L3Prefetcher:
         # self.prefetch_q.append((blockId,0)) # いや、informされた後にそれを取りに行ってももう遅いやろ。
         # self.gonnaPrefetchSet.add(blockId)
         self.prefetchedSet.add(blockId)
+        self.clearQueue()
+        self.enque_neighbor_blocks(blockId,0)
 
     def InformL4MissByPref(self,blockId):
         print("L3 Prefetcher missed L4 and brought from disk:{}\n",blockId)
 
     def InformUserPoint(self,blockId):
+        # こいつは、ユーザが1リクエストするたびに必ず全レイヤーにいる奴に伝わる情報
         pass
 
     def evict(self,centerBlockId):
@@ -220,8 +222,6 @@ class L3Prefetcher:
 
         self.enqueue_first_blockId(centerBlockId,0)
     
-
-
     def thread_func(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -258,7 +258,7 @@ class L4Prefetcher:
         self.stop_thread = False
         self.thread = None
 
-        self.radius = 10 # for now
+        self.radius = self.getRadiusFromCapacity() 
 
         # フェッチループ起動
         if self.L4Cache.capacityInMiB == 0:
@@ -269,9 +269,6 @@ class L4Prefetcher:
             self.thread.start()
             self.enqueue_first_blockId()
 
-    
-    
-    
     ####################### 初期化系メソッド ###########################
             
     def getRadiusFromCapacity(self):
@@ -280,9 +277,8 @@ class L4Prefetcher:
         radius = 0
         while((2*radius+1)**3 +2 <= capacity/blockSize):
             radius += 1
-        print(f"radius={radius}")
+        print(f"L4 caches radius={radius}")
         return radius
-
 
     def startPrefetching(self):
         self.stop_thread = False
@@ -411,6 +407,8 @@ class L4Prefetcher:
         # self.prefetch_q.append((blockId,0)) # いや、これはもうすでに取ってあるから今から取りに行ったってもう意味ないのよ。
         # self.gonnaPrefetchSet.add(blockId)
         self.prefetchedSet.add(blockId)
+        self.clearQueue() # ここで結構時間食ってる説あるよね。
+        self.enque_neighbor_blocks(blockId,0)
 
     def InformL4MissByPref(self,blockId):
         print("L3 Prefetcher missed L4 and brought from disk:{}\n",blockId)
