@@ -6,6 +6,7 @@ A middleware to support on-demand massive-scientific-data-visualization
 ## header type
 1. FirstContact (再初期化も含む)
 
+```
 header = {
     'type':'init',
     'offset':BlockOffset,
@@ -14,13 +15,17 @@ header = {
     'Policy' :'LRU',
     'FileName' : 'test',
 }
+```
 
-L3Sizeが0の時にはoffってことにします。
+例えば、L3Sizeが0の時にはL3cacheがoffってことを意味します。
 
 ここにリプレイスメントポリシーを入れるって感じにしたいと思います。キャッシュサイズも決められるようにしたいと思います。
+ーー＞ここは直そう
 
 2. BlockRequest
+これは、ユーザではなく、プリフェッチャがサーバにリクエストするための関数です。
 
+```
 header = {
     'type':'BlockReq',
     'tol':BlockId[0],
@@ -29,9 +34,13 @@ header = {
     'y': BlockId[3],
     'z': BlockId[4]
 }
+```
 
 3. noCompress
+なんだこれ？このシステムに必要か？ああ、実験のためのね。
+圧縮せずに全部持ってくる感じです！！作ったな。
 
+```
 header = {
     'type':'noCompress',
     'timestep':BlockId[1],
@@ -39,19 +48,48 @@ header = {
     'y': BlockId[3],
     'z': BlockId[4]
 }
-
-圧縮せずに全部持ってくる感じです！！
+```
 
 4. userPoint
+これは、L1とL2でヒットしたとき、データをサーバにリクエストすることはないけど、ユーザの位置を知らせる必要があるってことで、その関数です。
+```
+header = {
+    'type':'userPoint',
+    'timestep':BlockId[1],
+    'x': BlockId[2],
+    'y': BlockId[3],
+    'z': BlockId[4]
+}
+```
+
 5. getStats
+ユーザのリクエストシーケンスが0になった後に
+サーバ側でのキャッシュヒットがどうだったかをリクエストするためのやつです。
+
+```
+header = {
+    'type':'getStats'
+}
+```
+
 6. BlockReqUsr
 これは、ユーザがリクエストしたってことです。
+
+header = {
+    'type':'BlockReqUsr',
+    'tol':BlockId[0],
+    'timestep':BlockId[1],
+    'x': BlockId[2],
+    'y': BlockId[3],
+    'z': BlockId[4]
+}
 
 ## body
 compressed array
 
-# 対戦相手一覧
+# 対戦相手と提案手法の亜種一覧
 - [ ] HDF5とTileDBどっちも
+- [ ] multipleGPU/singleGPU
 - [ ] Pure TileDB
 - [ ] FP16
 - [ ] FP8
