@@ -4,7 +4,8 @@
 # 戻ってくるデータは全部compressedされている。L1がリクエストしたら、それをdecompressするまでセットかな。
 # ただ、気になるのが、L1からのリクエストは緊急なわけです。L2はどんどんリクエスト送るけど、
 # L1のリクエストを優先する何か、仕組みが欲しいんですね。
-
+# これなんだけどね、L1は、一個下をみて、なかったら、とってきてー、ってお願いするぐらいにしようかな、って思ってる。
+# お願いすらしなくてもいいかもしれない。
 
 # dequeはスレッドセーフ
 from collections import deque
@@ -22,6 +23,19 @@ class NetIF:
         self.thread = threading.Thread(target=self.net_thread_func)
         self.thread.start()
 
+    
+    def send_user_point(self,BlockId):
+        header = {
+            'type':'userPoint',
+            'tol':str(BlockId[0]),
+            'timestep':str(BlockId[1]),
+            'x': str(BlockId[2]),
+            'y': str(BlockId[3]),
+            'z': str(BlockId[4])
+        }
+        # response = 別に要らない
+        requests.get(self.URL,headers=header)
+        return
     
     # 末尾に追加
     def send_req(self,blockId):
@@ -141,7 +155,7 @@ class NetIF:
                 except Exception as e:
                     print("送信スレッドでexeptionが発生!")
                     print(e)
-                    
+
     def net_thread_func(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)

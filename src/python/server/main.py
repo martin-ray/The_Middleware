@@ -1,9 +1,8 @@
 import http.server
 import socketserver
 import threading
-
+import json
 from NetAPI import HttpAPI
-
 
 # Define the request handler class
 class MyRequestHandler(http.server.SimpleHTTPRequestHandler):
@@ -77,13 +76,31 @@ class MyRequestHandler(http.server.SimpleHTTPRequestHandler):
             y = int(self.headers.get('y'))
             z = int(self.headers.get('z'))
             blockId = (tol,timestep,x,y,z)
-            self.HttpAPI.L3Cache.InformUserPoint(blockId)
-            self.HttpAPI.L4Cache.InformUserPoint(blockId)
+            self.HttpAPI.InformUserPoint(blockId)
+            self.HttpAPI.InformUserPoint(blockId)
+            
 
-        # TODO (まず、ユーザからのリクエストと、クライアントサイドのプリふぇっちゃーからのリクエストを区別しないと厳しい。)
-        # TODO そのためには、
+
         elif msgType == 'getStats':
             totalReqs = self.HttpAPI.numReqs
+            nL3Hit = self.HttpAPI.numL3Hit
+            nL4Hit = self.HttpAPI.numL4Hit
+
+            # Create a dictionary with the stats
+            stats_data = {
+                'ReqsToServer': totalReqs,
+                'nL3Hit': nL3Hit,
+                'nL4Hit': nL4Hit
+            }
+
+            # Convert the dictionary to JSON
+            stats_json = json.dumps(stats_data)
+
+            # Send the JSON response
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(stats_json.encode('utf-8'))
 
 
 
@@ -117,11 +134,6 @@ def main():
         print("Shutting down the server")
         httpd.shutdown()
 
-
-# def main2():
-
-#     # interface to interact with the system
-#     websockAhp = 
-
+        
 if __name__ == '__main__':
     main()

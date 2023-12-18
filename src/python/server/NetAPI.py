@@ -4,23 +4,24 @@ import numpy as np
 import threading
 from slice import Slicer
 from compressor import compressor
-from L3_L4Cache import LRU_cache
+from L3_L4Cache import spatial_cache
 from L3_L4prefetcher import L3Prefetcher,L4Prefetcher
 import time
 import threading
 from flag import Flag
+from flag import LooseFlag
 import time
 
 
 class HttpAPI:
     def __init__(self,L3CacheSize=4096*8,L4CacheSize=0,blockSize=256,serverIp="http://localhost:8080"):
         # user is coming flag to control the GPU and storage resource
-        self.userUsingGPU = Flag()
-        self.userUsingStorage = Flag()
+        self.userUsingGPU = LooseFlag()
+        self.userUsingStorage = LooseFlag()
         self.Slicer = Slicer(blockOffset=blockSize)
         self.DataDim = self.Slicer.getDataDim()
-        self.L3Cache = LRU_cache(L3CacheSize,offsetSize=blockSize)
-        self.L4Cache = LRU_cache(L4CacheSize,offsetSize=blockSize)
+        self.L3Cache = spatial_cache(L3CacheSize,offsetSize=blockSize)
+        self.L4Cache = spatial_cache(L4CacheSize,offsetSize=blockSize)
         self.compressor = compressor(self.L3Cache)
         self.L4Pref = L4Prefetcher(self.L4Cache,dataDim=self.DataDim,blockSize=blockSize,userUsingGPU=self.userUsingGPU,userUsingStorage=self.userUsingStorage)
         self.L3Pref = L3Prefetcher(self.L3Cache, self.L4Cache,dataDim=self.DataDim,
@@ -107,8 +108,11 @@ class HttpAPI:
 
             if L4data is None:
                 self.numL3L4Miss += 1
+
+                self.L4Pref.InformL3MissAndL4Miss(blockId) # これ、先に下に伝えるってところがみそ。
                 self.L3Pref.InformL3MissAndL4Miss(blockId) # ここで知らせることで、2じゅうにフェッチすることを防いでいます。
-                self.L4Pref.InformL3MissAndL4Miss(blockId) # プリフェッチポリシーの変更はプリふぇっちゃー側で変更してください
+                self.L4Pref.InformUserPoint(blockId)
+                self.L3Pref.InformUserPoint(blockId)
                 
                 # ここ、L3とL4キャッシュに登録しなくても大丈夫か？まあいいか。
                 start_reading_time = time.time()
@@ -128,15 +132,19 @@ class HttpAPI:
             else:
                 self.numL4Hit += 1
 
-                self.L3Pref.InformL3MissAndL4Hit(blockId)
+                # 上流が先に知っておくのが大事
                 self.L4Pref.InformL3MissAndL4Hit(blockId)
-                
+                self.L3Pref.InformL3MissAndL4Hit(blockId)
+                self.L4Pref.InformUserPoint(blockId)
+                self.L3Pref.InformUserPoint(blockId)
+
+
                 start_compressing_time = time.time()
                 self.userUsingGPU.set_lock()
                 compressed = self.compressor.compress(L4data,tol)
                 self.userUsingGPU.unlock()
                 end_compressing_time = time.time()
-                
+
                 print(f"time_to_compress={end_compressing_time-start_compressing_time}")
                 return compressed
             
@@ -144,26 +152,28 @@ class HttpAPI:
             self.numL3Hit += 1
             self.L3Pref.InformL3Hit(blockId)
             self.L4Pref.InformL3Hit(blockId)
+            self.L4Pref.InformUserPoint(blockId)
+            self.L3Pref.InformUserPoint(blockId)
             L3_hit_time = time.time()
             print(f"time_to_read_from_l3={L3_hit_time-start_time}")
             return L3data
         
 
-        
+    # これは、L2やL1からのリクエストポイントですね。上のやつほど緊急度は高くありません。はい。
     def get(self,blockId):
         tol = blockId[0]
         L3data = self.L3Cache.get(blockId)
         if L3data is None:
             L4data = self.L4Cache.get(blockId)
             if L4data is None:
+                self.L4Pref.InformL3MissAndL4Miss(blockId)# プリフェッチポリシーの変更はプリふぇっちゃー側で変更してください
                 self.L3Pref.InformL3MissAndL4Miss(blockId)
-                self.L4Pref.InformL3MissAndL4Miss(blockId) # プリフェッチポリシーの変更はプリふぇっちゃー側で変更してください
                 original = self.Slicer.sliceData(blockId)
                 compressed = self.compressor.compress(original,tol)
                 return compressed
             else:
-                self.L3Pref.InformL3MissAndL4Hit(blockId)
                 self.L4Pref.InformL3MissAndL4Hit(blockId)
+                self.L3Pref.InformL3MissAndL4Hit(blockId)
                 return self.compressor.compress(L4data,tol)
         else:
             self.L3Pref.InformL3Hit(blockId)
