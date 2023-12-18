@@ -98,7 +98,7 @@ class HttpAPI:
     # 呼び出し側が、別スレッドで実行
     def getUsr(self,blockId):
         # ユーザが来たので、ほかのリソースはみんないったん止まってくださいってことです。
-        print("locked the GPU access")
+        # print("locked the GPU access")
         start_time = time.time()
         tol = blockId[0]
         L3data = self.L3Cache.get(blockId)
