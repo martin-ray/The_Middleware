@@ -3,18 +3,18 @@ import threading
 from collections import OrderedDict
 
 class LRU_cache:
-    def __init__(self, capacity, offsetSize=256):
-        self.capacity = capacity ## block that can be store
-        self.usedSize = 0
-        self.usedSizeInMB = 0
+    def __init__(self, capacityInMiB, offsetSize=256):
+        # self.capacity = capacity ## block that can be store
+        # self.usedSize = 0
+        self.usedSizeInMiB = 0
+        self.capacityInMiB = capacityInMiB
         self.SizeOfFloat = 4
         self.offsetSize = offsetSize
         self.BlockX = offsetSize
         self.BlockY = offsetSize
         self.BlockZ = offsetSize
         self.OneBlockSize = offsetSize ** 3 * self.SizeOfFloat
-        self.capacityInMB = offsetSize ** 3 * self.SizeOfFloat * capacity / 1024 / 1024
-        self.cache = OrderedDict()  # Use OrderedDict to maintain order
+        self.cache = OrderedDict()  # Use OrderedDict to maintain orderなんの
         self.CacheLock = threading.Lock()
         self.printInitInfo()
         self.printInfo()
@@ -22,38 +22,37 @@ class LRU_cache:
     def get(self, key):
         with self.CacheLock:
             if key in self.cache:
-                # Move the accessed item to the end
-                self.cache.move_to_end(key)
+                self.cache.move_to_end(key) # Move the accessed item to the end
                 return self.cache[key]
         return None
 
-    def put(self, key, value):
-        if (self.capacity) == 0:
+    def put(self, key, value):     # key = tuple, value = ndarray
+
+        if (self.capacityInMiB) == 0:
             return
+        
         with self.CacheLock:
             if key in self.cache:
-            # If the key already exists, move it to the end
                 self.cache.move_to_end(key)
-            elif len(self.cache) >= self.capacity:
-                # Evict the least recently used item (first item in OrderedDict)
-                self.cache.popitem(last=False)
-                print("cache is full! replacing!")
+            elif self.usedSizeInMiB >= self.capacityInMiB:
+                removedItem = self.cache.popitem(last=False)
+                self.usedSizeInMiB -= removedItem[1].nbytes/1024/1024
             self.cache[key] = value
+            self.usedSizeInMiB += value.nbytes/1024/1024
 
     def getUsedSize(self):
         return len(self.cache)
     
-    def getUsedSizeInMb(self):
-        return self.OneBlockSize*len(self.cache)/1024/1024
+    def getUsedSizeInMiB(self):
+        return self.usedSizeInMiB
     
-
     def printInitInfo(self):
         print("############ cache initial info ###########")
-        print("capacity = {}\nblockOffset = {}\ncapacityInMb = {}\n".format(self.capacity,self.offsetSize,self.capacity))
+        print("capacityInMiB = {}\nblockOffset = {}\n".format(self.capacityInMiB,self.offsetSize))
 
     def printInfo(self):
         print("usedSizeInMB/capacityInMb = {}/{}\n".format(
-            self.getUsedSizeInMb(),self.capacityInMB)
+            self.usedSizeInMiB,self.capacityInMiB)
             )
         
     def printAllKeys(self):
@@ -62,25 +61,123 @@ class LRU_cache:
 
     def clearCache(self):
         self.cache = OrderedDict() 
+        self.usedSizeInMiB = 0
 
-    def changeCapacity(self,capacity):
-        self.capacity = capacity
-        self.capacityInMB = self.offsetSize ** 3 * self.SizeOfFloat * capacity / 1024 / 1024
+    def changeCapacity(self,capacityInMiB):
+        self.capacityInMiB = capacityInMiB
         self.OneBlockSize = self.offsetSize ** 3 * self.SizeOfFloat
 
     def changeBlockoffset(self,blockOffset):
         self.offsetSize = blockOffset
         self.OneBlockSize = self.offsetSize ** 3 * self.SizeOfFloat
-        self.capacityInMB = self.offsetSize ** 3 * self.SizeOfFloat * self.capacity / 1024 / 1024
 
-class dynamic_cache:
-    def __init__(self,size):
-        self.size = size
+    def calCapacityFromMiB(self,MiB):
+        self.capacity = MiB*1024*1024*1024/(self.offsetSize**3 * self.SizeOfFloat)
+        return self.capacity
     
-    def add(self):
-        pass
-    def prefetch(self):
-        pass
+    def setCacheSizeInGiB(self,GiB):
+        self.capacity = GiB*1024*1024*1024/(self.offsetSize**3 * self.SizeOfFloat)
+        return self.capacity
+
+class spatial_cache:
+    def __init__(self, capacityInMiB, offsetSize=256):
+        self.usedSizeInMiB = 0
+        self.capacityInMiB = capacityInMiB
+        self.SizeOfFloat = 4
+        self.offsetSize = offsetSize
+        self.BlockX = offsetSize
+        self.BlockY = offsetSize
+        self.BlockZ = offsetSize
+        self.OneBlockSize = offsetSize ** 3 * self.SizeOfFloat
+        self.cache = OrderedDict()  # Use OrderedDict to maintain orderなんの
+        self.CacheLock = threading.Lock()
+        self.radius = 0
+        self.printInitInfo()
+        self.printInfo()
+
+    def get(self, key):
+        with self.CacheLock:
+            if key in self.cache:
+                return self.cache[key]
+        return None
+
+    def put(self, key, value):     # key = tuple, value = {"data":ndarray,"distance":dist_from_userpoint}
+        if (self.capacityInMiB) == 0:
+            return
+        
+        with self.CacheLock:
+            if key in self.cache:
+                pass
+            elif self.usedSizeInMiB >= self.capacityInMiB:
+                removedItem = self.cache.popitem(last=False) # returns (key,value).
+                self.usedSizeInMiB -= removedItem[1].nbytes/1024/1024
+            self.cache[key] = value
+            self.usedSizeInMiB += value.nbytes/1024/1024
+
+    def calHops(self,centerBlockId,targetBlockId):
+        timeHops = abs(centerBlockId[1]-targetBlockId[1])
+        xHops = abs(centerBlockId[2]- targetBlockId[2])
+        yHops = abs(centerBlockId[3]- targetBlockId[3])
+        zHops = abs(centerBlockId[4]- targetBlockId[4])
+        spaceHops = max(xHops,yHops,zHops)//self.blockOffset # これでホップ数が出る
+        return timeHops + spaceHops
+    
+    def evict(self,userPoint):
+        # Iterate through the OrderedDict using a for loop. # value["distance"],value["data"]
+        for key, value in self.cache.items():
+            dist = self.calHops(userPoint,value["data"])
+            # evicts only if cache is full and the element places further than radis from userPoint
+            if ((dist > self.radius) and (self.usedSizeInMiB >= self.capacityInMiB)):
+                value = self.cache.pop(key)
+                data = value["data"]
+                self.usedSizeInMiB -= data.nbytes/1024/1024
+
+    def getRadiusFromCapacity(self):
+        capacityInMiB = self.capacityInMiB
+        blockSizeInByte = self.SizeOfFloat*self.blockOffset**3
+        print(f"capacityInMiB = {capacityInMiB},blockSizeInByte={blockSizeInByte}")
+        while((2*self.radius+1)**3 +2 <= capacityInMiB*1024*1024/blockSizeInByte):
+            self.radius += 1
+        print(f"L4 caches radius={self.radius}")
+
+    def getUsedSize(self):
+        return len(self.cache)
+    
+    def getUsedSizeInMiB(self):
+        return self.usedSizeInMiB
+    
+    def printInitInfo(self):
+        print("############ cache initial info ###########")
+        print("capacityInMiB = {}\nblockOffset = {}\n".format(self.capacityInMiB,self.offsetSize))
+
+    def printInfo(self):
+        print("usedSizeInMB/capacityInMb = {}/{}\n".format(
+            self.usedSizeInMiB,self.capacityInMiB)
+            )
+        
+    def printAllKeys(self):
+        keys = self.cache.keys()
+        print(keys)
+
+    def clearCache(self):
+        self.cache = OrderedDict() 
+        self.usedSizeInMiB = 0
+
+    def changeCapacity(self,capacityInMiB):
+        self.capacityInMiB = capacityInMiB
+        self.OneBlockSize = self.offsetSize ** 3 * self.SizeOfFloat
+
+    def changeBlockoffset(self,blockOffset):
+        self.offsetSize = blockOffset
+        self.OneBlockSize = self.offsetSize ** 3 * self.SizeOfFloat
+
+    def calCapacityFromMiB(self,MiB):
+        self.capacity = MiB*1024*1024*1024/(self.offsetSize**3 * self.SizeOfFloat)
+        return self.capacity
+    
+    def setCacheSizeInGiB(self,GiB):
+        self.capacity = GiB*1024*1024*1024/(self.offsetSize**3 * self.SizeOfFloat)
+        return self.capacity
 
 
 # Example usage and test
