@@ -122,15 +122,10 @@ class spatial_cache:
         spaceHops = max(xHops,yHops,zHops)//self.blockOffset # これでホップ数が出る
         return timeHops + spaceHops
     
-    def evict(self,userPoint):
+    def evict_a_block(self,key):
         # Iterate through the OrderedDict using a for loop. # value["distance"],value["data"]
-        for key, value in self.cache.items():
-            dist = self.calHops(userPoint,value["data"])
-            # evicts only if cache is full and the element places further than radis from userPoint
-            if ((dist > self.radius) and (self.usedSizeInMiB >= self.capacityInMiB)):
-                value = self.cache.pop(key)
-                data = value["data"]
-                self.usedSizeInMiB -= data.nbytes/1024/1024
+        data = self.cache.pop(key)
+        self.usedSizeInMiB -= data.nbytes/1024/1024
 
     def getRadiusFromCapacity(self):
         capacityInMiB = self.capacityInMiB
@@ -178,6 +173,9 @@ class spatial_cache:
     def setCacheSizeInGiB(self,GiB):
         self.capacity = GiB*1024*1024*1024/(self.offsetSize**3 * self.SizeOfFloat)
         return self.capacity
+    
+    def isCacheFull(self):
+        return self.capacityInMiB <= self.usedSizeInMiB
 
 
 # Example usage and test
