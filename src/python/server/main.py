@@ -76,10 +76,11 @@ class MyRequestHandler(http.server.SimpleHTTPRequestHandler):
             y = int(self.headers.get('y'))
             z = int(self.headers.get('z'))
             blockId = (tol,timestep,x,y,z)
-            self.HttpAPI.InformUserPoint(blockId)
-            self.HttpAPI.InformUserPoint(blockId)
-            
-
+            self.HttpAPI.informUserPoint(blockId)
+            self.HttpAPI.informUserPoint(blockId)
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write()
 
         elif msgType == 'getStats':
             totalReqs = self.HttpAPI.numReqs
