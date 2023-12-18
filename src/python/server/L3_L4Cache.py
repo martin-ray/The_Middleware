@@ -124,6 +124,7 @@ class spatial_cache:
     
     def evict_a_block(self,key):
         # Iterate through the OrderedDict using a for loop. # value["distance"],value["data"]
+        print("evicting a block")
         data = self.cache.pop(key)
         self.usedSizeInMiB -= data.nbytes/1024/1024
 
