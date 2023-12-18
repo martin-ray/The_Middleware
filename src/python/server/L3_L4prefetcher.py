@@ -100,9 +100,9 @@ class L3Prefetcher:
 
     async def fetchLoop(self):
         while not self.stop_thread:
-            if (not self.prefetch_q_empty()) and (self.L3Cache.usedSizeInMiB < self.L3Cache.capacityInMiB) and (not self.userUsingGPU.is_locked() and (not self.userUsingStorage)):
+            if (not self.prefetch_q_empty()) and (self.L3Cache.usedSizeInMiB < self.L3Cache.capacityInMiB) and (not self.userUsingGPU.is_locked() and (not self.userUsingStorage.is_locked())):
                 
-                # print("L3 PREFETCHER IS READING FROM STORAGE")
+                print("L3 PREFETCHER IS READING FROM STORAGE")
                 nextBlockId,distance = self.pop_front()
                 if distance > self.radius:
                     print("the block in the prefetch queue is no more needed")
@@ -129,6 +129,12 @@ class L3Prefetcher:
                 self.enque_neighbor_blocks(nextBlockId,distance)
 
             else:
+                print("L3: Queue empty?={}, Cache full?={}, GPU locked = {}, Storage locked={}".format(
+                    self.prefetch_q_empty(),
+                    self.L3Cache.usedSizeInMiB >= self.L3Cache.capacityInMiB,
+                    self.userUsingGPU.is_locked(),
+                    self.userUsingStorage.is_locked()
+                ))
                 await asyncio.sleep(0.05)  # Sleep for 1 second, or adjust as needed
     
 
@@ -219,33 +225,35 @@ class L3Prefetcher:
     # TODO プリフェッチ方針を変えるか
     def InformL3Hit(self,blockId):
         print("L3 hit ! nice! From L3 prefetcher")
-        pass
-
-    # 全部捨てる必要はなくない？
+    
     def InformL3MissAndL4Hit(self,blockId):
         print("L3Miss and L4 Hit")
-        # self.clearQueue()
-        self.enque_neighbor_blocks(blockId,0)
     
     def InformL3MissAndL4Miss(self,blockId):
         print("L3 Missed and L4 Miss:{}\n".format(blockId))
         self.prefetchedSet.add(blockId)
-        # self.clearQueue()
-        self.enque_neighbor_block(blockId,0)
 
     def InformL4MissByPref(self,blockId):
         print("L3 Prefetcher missed L4 and brought from disk:{}\n",blockId)
 
     def InformUserPoint(self,blockId):
-        # こいつは、ユーザが1リクエストするたびに必ず全レイヤーにいる奴に伝わる情報
-        # self.evict(blockId)
-        pass
+        print(f"L3 : user is at{blockId}")
+        start = time.time()
+        self.evict(blockId)
+        self.updatePrefetchQ(blockId)
+        end = time.time()
+        print("L3 : time to update cache info {}".format(
+            end - start
+        ))
 
     # ここ結構時間かかりそうだけど、大丈夫？
     def evict(self,userPoint):
         # キャッシュの要素を取り出していく。
-        for blockId,blockValue in self.L3Cache.cache.items():
-            hops = self.calcHops(userPoint,blockId)
+        for blockId in self.L3Cache.cache.keys():
+            hops = self.calHops(userPoint,blockId)
+            # print("L3 : user point={},block={},dist={}".format(
+            #     userPoint,blockId,hops
+            # ))
             if (hops > self.radius) and self.L3Cache.isCacheFull():
                 self.L3Cache.evict_a_block(blockId)
                 self.prefetchedSet.discard(blockId)
@@ -353,7 +361,6 @@ class L4Prefetcher:
 
             # ここで帯域幅の奪い合いが生じる。どうする！
             if (not self.prefetch_q_empty()) and (self.L4Cache.usedSizeInMiB <  self.L4Cache.capacityInMiB) and (not self.userUsingStorage.is_locked()):
-                # print("L4 PREFETCHER IS READING FROM STORAGE")
                 nextBlockId,distance = self.pop_front()
                 if distance > self.radius:
                     continue
@@ -362,11 +369,14 @@ class L4Prefetcher:
                 self.prefetchedSet.add(nextBlockId)
                 self.enque_neighbor_blocks(nextBlockId,distance)
             else:
-                print(f"L4 waiting.\
-                      queue empty? ={self.prefetch_q_empty()},\
-                        cache capacity still not full? ={self.L4Cache.usedSizeInMiB < self.L4Cache.capacityInMiB},\
-                        storage locked = {self.userUsingStorage.is_locked()}")
+                print("L4: Queue empty?={}, Cache full?={}, Storage locked={}".format(
+                    self.prefetch_q_empty(),
+                    self.L4Cache.usedSizeInMiB >= self.L4Cache.capacityInMiB,
+                    self.userUsingStorage.is_locked()
+                ))
                 await asyncio.sleep(0.05)  # Sleep for 1 second, or adjust as needed
+                
+                
     
     # 実際はここで実行される
     def thread_func(self):
@@ -441,8 +451,7 @@ class L4Prefetcher:
 
     def InformL3MissAndL4Hit(self,blockId):
         print("L3Miss and L4 Hit")
-        # self.clearQueue() # ここで結構時間食ってる説あるよね。
-        self.enque_neighbor_blocks_to_front(blockId,0)
+        # self.enque_neighbor_blocks_to_front(blockId,0)
 
     def InformL3MissAndL4Miss(self,blockId):
         print("L3 Miss and L4 Miss:{}\n".format(blockId))
@@ -450,7 +459,7 @@ class L4Prefetcher:
         # self.gonnaPrefetchSet.add(blockId)
         self.prefetchedSet.add(blockId)
         # self.clearQueue() # ここで結構時間食ってる説あるよね。
-        self.enque_neighbor_blocks_to_front(blockId,0)
+        # self.enque_neighbor_blocks_to_front(blockId,0)
 
     def InformL4MissByPref(self,blockId):
         print("L3 Prefetcher missed L4 and brought from disk:{}\n",blockId)
@@ -492,13 +501,19 @@ class L4Prefetcher:
         self.gonnaPrefetchSet.add(blockId)
 
     def InformUserPoint(self,blockId):
-        pass
+        print(f"L4:user is at{blockId}")
+        start = time.time()
+        self.evict(blockId)
+        self.updatePrefetchQ(blockId)
+        end = time.time()
+        print(f"L4:time to update cache info = {end - start}")
 
     # ここ結構時間かかりそうだけど、大丈夫？
     def evict(self,userPoint):
         # キャッシュの要素を取り出していく。
+        print("evicting")
         for blockId,blockValue in self.L4Cache.cache.items():
-            hops = self.calcHops(userPoint,blockId)
+            hops = self.calHops(userPoint,blockId)
             if (hops > self.radius) and self.L4Cache.isCacheFull():
                 self.L4Cache.evict_a_block(blockId)
                 self.prefetchedSet.discard(blockId)
@@ -507,7 +522,7 @@ class L4Prefetcher:
     def updatePrefetchQ(self,userPoint):
         self.enque_neighbor_blocks_to_front(userPoint,0) # でいんじゃね？って思った。
 
-        
+
     ################# L3プリフェッチャーからの読み出しリクエスト ############
 
     def L3ReadReq(self,blockId):
