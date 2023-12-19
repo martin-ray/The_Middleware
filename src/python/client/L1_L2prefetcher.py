@@ -14,11 +14,9 @@ from NetInterface import NetIF
 from decompressor import Decompressor
 
 class L2Prefetcher:
-    def __init__(self,L2Cache,GPUmutex,maxTimestep=9,serverURL="http://localhost:8080",OnSwitch=True,) -> None:
+    def __init__(self,L2Cache,GPUmutex,maxTimestep=9,serverURL="http://172.20.2.253:8080",OnSwitch=True) -> None:
+        
         self.URL = serverURL
-
-        # ToleranceArray
-        self.Tols = [0.0001,0.001,0.01,0.1,0.2,0.3,0.4,0.5]
         self.maxTimestep = maxTimestep
         self.maxX = 1024
         self.maxY = 1024
@@ -30,6 +28,7 @@ class L2Prefetcher:
         self.prefetch_q = deque() # blocks going to get
         self.Netif = NetIF(self.L2Cache,serverURL)
         self.stop_thread = False
+        self.thread = None
 
         # GPUmutex
         self.GPUmutex = GPUmutex
@@ -85,7 +84,7 @@ class L2Prefetcher:
 
     def InformL2MissByUser(self,blockId):
         print("L1 and L2 Missed the request by user:{}\n",blockId)
-        self.clearQueue()
+        # self.clearQueue()
         self.enque_neighbor_blocks(blockId)
 
     def InformL1MissL2HitByUser(self,blockId):
@@ -101,14 +100,13 @@ class L2Prefetcher:
 
     async def fetchLoop(self):
         while not self.stop_thread:
-            # print("L2:")
-            # self.L2Cache.printAllKeys()
             if (not self.prefetch_q_empty()) and (self.L2Cache.usedSizeInMiB < self.L2Cache.capacityInMiB):
                 # self.L2Cache.printInfo()
                 nextBlockId = self.pop_front()
-                self.Netif.send_req(nextBlockId) # 別スレッドで実行されるキュー
+                self.Netif.send_req(nextBlockId) # 別スレッドで実行されるネット呼び出し
                 self.enque_neighbor_blocks(nextBlockId)
             else:
+                print("L2 prefetcher not prefetcing because prefetcing Q is empty or cache is full")
                 await asyncio.sleep(0.1)  # Sleep for 1 second, or adjust as needed
 
     def thread_func(self):
@@ -121,7 +119,7 @@ class L2Prefetcher:
         if self.L2Cache.capacityInMiB > 0:
             self.thread = threading.Thread(target=self.thread_func)
             self.thread.start()
-            self.enqueue_first_blockId()
+            # self.enqueue_first_blockId()
             print("restarted L2 prefetcher!")
         else :
             print("L2 cache size is 0. So L2 prefetcher is not starting")
@@ -157,10 +155,9 @@ class L1Prefetcher:
         self.L1Cache = L1Cache
         self.L2Cache = L2Cache
         self.decompressor = Decompressor(self.L1Cache)
+        
         # 自分で持つことにしました。
         self.Netif = NetIF(self.L2Cache)
-
-        self.Tols = [0.0001,0.001,0.01,0.1,0.2,0.3,0.4,0.5]
         self.maxTimestep = maxTimestep
         self.maxX = 1024
         self.maxY = 1024
@@ -208,10 +205,10 @@ class L1Prefetcher:
                             self.gonnaPrefetchSet.add((tol,timestep+dt, x+dx, y+dy, z+dz))
 
 
-    def enqueue_first_blockId(self):
-        firstBlock = (0.1, 0, 0 ,0 ,0 )
-        self.prefetch_q.append(firstBlock)
-        self.gonnaPrefetchSet.add(firstBlock)
+    # def enqueue_first_blockId(self):
+    #     firstBlock = (0.1, 0, 0 ,0 ,0 )
+    #     self.prefetch_q.append(firstBlock)
+    #     self.gonnaPrefetchSet.add(firstBlock)
 
 
     def pop_front(self):
@@ -278,7 +275,6 @@ class L1Prefetcher:
         if self.L3Cache.capacity > 0:
             self.thread = threading.Thread(target=self.thread_func)
             self.thread.start()
-            self.enqueue_first_blockId()
             print("restarted L3 prefetcher!")
         else :
             print("L3 cache size is 0. So L3 prefetcher is not starting")
