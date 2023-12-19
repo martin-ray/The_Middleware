@@ -3,16 +3,15 @@ from decompressor import Decompressor
 from NetInterface import NetIF
 from L1_L2prefetcher import L2Prefetcher,L1Prefetcher
 from L1_L2Cache import LRU_cache
+from L1_L2Cache import spatial_cache
 from recomposer import Recomposer
 import threading
 import time
 import concurrent.futures
 
 class ClientAPI:
-    # L1は絶対にONにしないといけない?L4も絶対にONにしないといけない? そんなことない
     def __init__(self,L1Size, L2Size, L3Size, L4Size,blockSize=256,L1PrefOn=True,L2PrefOn=True,L3PrefOn=True,L4PrefOn=True):
 
-        # 実験パラメータ
         self.L1CacheSize = L1Size
         self.L2CacheSize = L2Size
         self.L3CacheSize = L3Size
@@ -22,9 +21,11 @@ class ClientAPI:
         # GPUの利用権。できればロックフリーにしたいんだけど、さすがに俺には難しい。
         self.GPUmutex = threading.Lock()
         
-        # 各コンポーネント
-        self.L1Cache = LRU_cache(self.L1CacheSize,self.blockOffset)
-        self.L2Cache = LRU_cache(self.L2CacheSize,self.blockOffset)
+        # コンポーネント
+        # self.L1Cache = LRU_cache(self.L1CacheSize,self.blockOffset)
+        # self.L2Cache = LRU_cache(self.L2CacheSize,self.blockOffset)
+        self.L1Cache = spatial_cache(self.L1CacheSize,self.blockOffset)
+        self.L2Cache = spatial_cache(self.L2CacheSize,self.blockOffset)
         self.decompressor = Decompressor(L1Cache=self.L1Cache)
 
         # sendLoop threadはconstructorの中で起動
@@ -36,20 +37,19 @@ class ClientAPI:
             print("initialization failed in server.")
             exit(0)
         else:
-            print("initalization success!")
+            print("initalization success")
 
-        # fetchLoop threadはconstructorの中で起動。L2prefがGPUmutexを使うことはおそらくないんだろうね。
+        # fetchLoop threadはconstructorの中で起動
         self.L2pref = L2Prefetcher(L2Cache=self.L2Cache,GPUmutex=self.GPUmutex) 
 
         # fetchLoop threadはconstructorの中で起動。L1prefは自分でdecompressorのインスタンスを持っている
         self.L1pref = L1Prefetcher(L1Cache=self.L1Cache,L2Cache=self.L2Cache,offsetSize=self.blockOffset,GPUmutex=self.GPUmutex)
-        
         self.recomposer = Recomposer(blockOffset=self.blockOffset)
 
         # スレッド数
         self.thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=8)
 
-        # L1Hit L2Hit Server Req
+        # stats (L1Hit L2Hit ServerRequest)
         self.numL1Hit = 0
         self.numL2Hit = 0
         self.numReqTime = 0
@@ -92,19 +92,20 @@ class ClientAPI:
 
         # 情報を出力
         print("restarting the system with the following setting:\n")
-        print("L3Size:{}\nL4Size:{}\nblockSize:{}\nReplacementPolicy:{}\n".format
+        print("L3Size:{}\nL4Size:{}\nblockSize:{}\n".format
               (self.L1CacheSize,
                self.L2CacheSize,
                 self.L3Cache.capacity,
                self.L4Cache.capacity,
                self.blockSize,
-               "LRU for now"))
+               ))
         
         print("sending the info to server")
         self.netIF.reInitRequest(self.blockOffset,L3CacheSize,L4CacheSize)
 
-        time.sleep(2) # give the server some time to warm up
+        time.sleep(6) # give the server some time to warm up
         print("start prefetching")
+
         # # プリフェッチを開始
         self.L2pref.startPrefetching()
         self.L1pref.startPrefetching()
@@ -148,6 +149,8 @@ class ClientAPI:
 
         for blockId in BlockIds:
             L1data = self.L1Cache.get(blockId)
+            self.L2pref.InformUserPoint(blockId)
+            self.L1pref.InformUserPoint(blockId)
             if L1data is None:
                 self.L1pref.InformL1MissByUser(blockId)
                 L2data = self.L2Cache.get(blockId)
@@ -157,13 +160,14 @@ class ClientAPI:
                     future = self.thread_pool.submit(self.L2MissHandler, blockId, BlockAndData)
                     threads.append(future)
                 else:
+                    self.netIF.send_user_point(blockId)
                     self.numL2Hit += 1
                     self.L2pref.InformL1MissL2HitByUser(blockId)
                     future = self.thread_pool.submit(self.L1HitHandler, blockId, L2data, BlockAndData)
                     threads.append(future)
             else:
+                self.netIF.send_user_point(blockId)
                 self.numL1Hit += 1
-                # L1でヒット
                 print("L1 hit!")
                 BlockAndData[blockId] = L1data
 
