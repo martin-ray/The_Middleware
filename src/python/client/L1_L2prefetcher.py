@@ -168,7 +168,8 @@ class L1Prefetcher:
         self.prefetchedSet = set()
         self.prefetch_q = deque()
         self.stop_thread = False
-
+        self.thread = None
+        
         # GPUのmutex
         self.GPUmutex = GPUmutex
 
