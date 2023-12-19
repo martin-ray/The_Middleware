@@ -208,7 +208,7 @@ class L1Prefetcher:
     def pop_front(self):
         return self.prefetch_q.popleft()
     
-    def letKnowCenterPoint(self,blockId):
+    def InformUserPoint(self,blockId):
         pass
 
     def InformL1MissByUser(self,blockId):
