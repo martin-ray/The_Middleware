@@ -136,11 +136,6 @@ class L2Prefetcher:
     def changeBlockOffset(self,blockOffset):
         self.blockOffset = blockOffset
 
-    def enqueue_first_blockId(self):
-        firstBlock = (0.1, 0, 0 ,0 ,0 )
-        self.prefetch_q.append(firstBlock)
-        self.gonnaPrefetchSet.add(firstBlock)
-
     def clearQueue(self):
         while not self.prefetch_q_empty():
             blockId = self.pop_front()
@@ -213,7 +208,7 @@ class L1Prefetcher:
 
     def InformL1MissByUser(self,blockId):
         print("User missed to catch in L1: {}\n".format(blockId))
-        self.clearQueue()
+
         self.enque_neighbor_blocks(blockId)
 
     def InformL1MissAndL2Hit(self,blockId):
@@ -232,8 +227,7 @@ class L1Prefetcher:
     
     async def fetchLoop(self):
         while not self.stop_thread:
-            # print("L1 cache:")
-            # self.L1Cache.printAllKeys()
+
             if (not self.prefetch_q_empty()) and (self.L1Cache.usedSizeInMiB < self.L1Cache.capacityInMiB):
                 # self.L1Cache.printInfo()
                 nextBlockId = self.pop_front()
