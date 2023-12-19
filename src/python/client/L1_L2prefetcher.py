@@ -169,7 +169,7 @@ class L1Prefetcher:
         self.prefetch_q = deque()
         self.stop_thread = False
         self.thread = None
-        
+
         # GPUのmutex
         self.GPUmutex = GPUmutex
 
@@ -201,15 +201,8 @@ class L1Prefetcher:
                             or (z+dz < 0) or (z+dz >= self.maxZ)):
                             continue
                         else:
-                            # print("appending {}".format((tol,timestep+dt, x+dx, y+dy, z+dz)))
                             self.prefetch_q.append((tol,timestep+dt, x+dx, y+dy, z+dz))
                             self.gonnaPrefetchSet.add((tol,timestep+dt, x+dx, y+dy, z+dz))
-
-
-    # def enqueue_first_blockId(self):
-    #     firstBlock = (0.1, 0, 0 ,0 ,0 )
-    #     self.prefetch_q.append(firstBlock)
-    #     self.gonnaPrefetchSet.add(firstBlock)
 
 
     def pop_front(self):
