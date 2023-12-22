@@ -3,6 +3,7 @@ import asyncio
 import numpy as np
 import threading
 from slice import Slicer
+from slice import TileDBSlicer
 from compressor import compressor
 from L3_L4Cache import spatial_cache
 from L3_L4prefetcher import L3Prefetcher,L4Prefetcher
@@ -18,11 +19,12 @@ class HttpAPI:
         # user is coming flag to control the GPU and storage resource
         self.userUsingGPU = LooseFlag()
         self.userUsingStorage = LooseFlag()
-        self.Slicer = Slicer(blockOffset=blockSize)
+        # self.Slicer = Slicer(blockOffset=blockSize)
+        self.Slicer = TileDBSlicer()
         self.DataDim = self.Slicer.getDataDim()
         self.L3Cache = spatial_cache(L3CacheSize,offsetSize=blockSize)
         self.L4Cache = spatial_cache(L4CacheSize,offsetSize=blockSize)
-        self.compressor = compressor(self.L3Cache)
+        self.compressor = compressor(self.L3Cache,device_id=1)
         self.L4Pref = L4Prefetcher(self.L4Cache,dataDim=self.DataDim,blockSize=blockSize,userUsingGPU=self.userUsingGPU,userUsingStorage=self.userUsingStorage)
         self.L3Pref = L3Prefetcher(self.L3Cache, self.L4Cache,dataDim=self.DataDim,
                                    L4Prefetcher=self.L4Pref,blockOffset=blockSize,
@@ -47,8 +49,8 @@ class HttpAPI:
         print("stopping the prefetch thread")
         self.L3Pref.stop()
         self.L4Pref.stop()
-        print("waiting for the threads to finish...")
-        time.sleep(10)
+        print("waiting for the threads to stop...")
+        time.sleep(5)
 
         # プリフェッチのサイズも変更
         self.L3Cache.changeBlockoffset(self.blockSize)

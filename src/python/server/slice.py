@@ -66,21 +66,18 @@ class TileDBSlicer:
     def __init__(self,blockOffset=256,cacheSize=0,filename="/scratch/aoyagir/tiledb_data/array64") -> None:
         # Create a TileDB config
         self.config = tiledb.Config()
+        self.config["sm.tile_cache_size"] = cacheSize
         self.ctx = tiledb.Ctx(self.config)
         self.filename = filename
         self.blockOffset = blockOffset
         self.timesteps = None
-        self.xMax = None
-        self.yMax = None
-        self.zMax = None
+        self.xMax = 1024
+        self.yMax = 1024
+        self.zMax = 1024
+        self.shape = [self.timesteps,self.xMax,self.yMax,self.zMax]
+
         self.getDim()
         self.printDataInfo()
-
-
-    def printDataInfo(self):
-        print("##### Row data INFO #####")
-        print("timesteps:{}\nx:{}\ny:{}\nz:{}\n"
-              .format(self.timesteps,self.xMax,self.yMax,self.zMax))
 
     def getDim(self):
         with tiledb.open(self.filename, mode="r", ctx=self.ctx) as array:
@@ -90,13 +87,17 @@ class TileDBSlicer:
             print(array_schema)
             # You can also access other information about the array, such as its domain and attributes
             domain = array_schema.domain
-            print("Domain:", domain)
+            i = 0
+            for s in domain:
+                print(s)
+                print(s.name)
+                print(s.domain)
+                print(s.domain[1])
+                self.shape[i] = s.domain[1] + 1
+                i += 1
 
     def slice_single_step(self,timestep,x,xx,y,yy,z,zz):
         with tiledb.DenseArray(self.filename, mode="r", ctx=self.ctx) as array:
-            # Read the sliced data from the TileDB array using 'from' and 'to' expressions
-            # arrayから返却されるのは、orderd_dict.で、keyが'data'になっているので読みだす必要がある。
-            # 以下で、dataが読み出される。
             data = array[timestep,x:xx, y:yy, z:zz]['data']
             return data
     
@@ -110,3 +111,18 @@ class TileDBSlicer:
         z = blockId[4]
         return self.slice_single_step(t,x,x+self.blockOffset,y,y+self.blockOffset,z,z+self.blockOffset)
 
+    def changeBlockSize(self,blockSize):
+        print("changin block size from {} to {}".format(self.blockOffset,blockSize))
+        self.blockOffset = blockSize
+    
+    def printBlocksize(self):
+        print(self.blockOffset)
+
+    def printDataInfo(self):
+        print("##### Row data INFO #####")
+        print("timesteps:{}\nx:{}\ny:{}\nz:{}\n"
+              .format(self.timesteps,self.xMax,self.yMax,self.zMax))
+        
+    def getDataDim(self):
+        self.getDim()
+        return self.shape
