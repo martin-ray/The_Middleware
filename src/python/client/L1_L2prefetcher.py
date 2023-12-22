@@ -24,7 +24,7 @@ class L2Prefetcher:
         self.maxX = 1024
         self.maxY = 1024
         self.maxZ = 1024
-        self.default_offset = 256
+        self.blockOffset = 256
         self.L2Cache = L2Cache
         self.gonnaPrefetchSet = set()
         self.prefetchedSet = set()
@@ -33,6 +33,7 @@ class L2Prefetcher:
         self.stop_thread = False
         self.thread = None
         self.userPoint = None
+        self.radius = 10
 
         # GPUmutex
         self.GPUmutex = GPUmutex
@@ -43,7 +44,6 @@ class L2Prefetcher:
         else:
             self.thread = threading.Thread(target=self.thread_func)
             self.thread.start()
-            self.enqueue_first_blockId()
 
     ################## 初期化系メソッド ####################
     def startPrefetching(self):
@@ -235,7 +235,6 @@ class L1Prefetcher:
         else:
             self.thread = threading.Thread(target=self.thread_func)
             self.thread.start()
-            self.enqueue_first_blockId()
 
     ############## 初期化系のメソッド #############
 
