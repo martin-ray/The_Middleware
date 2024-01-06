@@ -80,18 +80,21 @@ class MyRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.HttpAPI.informUserPoint(blockId)
             self.send_response(200)
             self.end_headers()
-            self.wfile.write()
 
         elif msgType == 'getStats':
             totalReqs = self.HttpAPI.numReqs
             nL3Hit = self.HttpAPI.numL3Hit
             nL4Hit = self.HttpAPI.numL4Hit
+            StorageReadTime = self.HttpAPI.StorageReadTime
+            CompTime = self.HttpAPI.CompTime
 
             # Create a dictionary with the stats
             stats_data = {
                 'ReqsToServer': totalReqs,
                 'nL3Hit': nL3Hit,
-                'nL4Hit': nL4Hit
+                'nL4Hit': nL4Hit,
+                'StorageReadTime':StorageReadTime,
+                'CompTime':CompTime
             }
 
             # Convert the dictionary to JSON

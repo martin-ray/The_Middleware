@@ -24,7 +24,7 @@ class HttpAPI:
         self.DataDim = self.Slicer.getDataDim()
         self.L3Cache = spatial_cache(L3CacheSize,offsetSize=blockSize)
         self.L4Cache = spatial_cache(L4CacheSize,offsetSize=blockSize)
-        self.compressor = compressor(self.L3Cache,device_id=1)
+        self.compressor = compressor(self.L3Cache)
         self.L4Pref = L4Prefetcher(self.L4Cache,dataDim=self.DataDim,blockSize=blockSize,userUsingGPU=self.userUsingGPU,userUsingStorage=self.userUsingStorage)
         self.L3Pref = L3Prefetcher(self.L3Cache, self.L4Cache,dataDim=self.DataDim,
                                    L4Prefetcher=self.L4Pref,blockOffset=blockSize,
@@ -37,7 +37,8 @@ class HttpAPI:
         self.numL3Hit = 0
         self.numL4Hit = 0
         self.numL3L4Miss = 0 # numReqs == numL3Hit + numL4Hit + numL3L4Missって計算式になります
-
+        self.StorageReadTime = []
+        self.CompTime = []
 
 
     def reInit(self,L3CacheSize,L4CacheSize,blockSize,policy='LRU'):
@@ -76,6 +77,8 @@ class HttpAPI:
         self.numL3Hit = 0
         self.numL4Hit = 0
         self.numL3L4Miss = 0
+        self.StorageReadTime = []
+        self.CompTime = []
         
         # 別スレッドで動いているぷりふぇっちゃーの設定を変更
         self.L3Pref.InitializeSetting(self.blockSize)
@@ -105,6 +108,7 @@ class HttpAPI:
         tol = blockId[0]
         L3data = self.L3Cache.get(blockId)
         self.numReqs += 1
+
         if L3data is None:
             L4data = self.L4Cache.get(blockId)
 
@@ -127,8 +131,12 @@ class HttpAPI:
                 compressed = self.compressor.compress(original,tol)
                 self.userUsingGPU.unlock()
                 end_compression_time = time.time()
+
+                # for stats
+                self.StorageReadTime.append(end_reading_time-start_reading_time)
+                self.CompTime.append(end_compression_time-end_reading_time)
+                # print(f"time_to_read={end_reading_time-start_reading_time}\ntime_to_compress={end_compression_time-end_reading_time}")
                 
-                print(f"time_to_read={end_reading_time-start_reading_time}\ntime_to_compress={end_compression_time-end_reading_time}")
                 return compressed
             
             else:
@@ -147,6 +155,10 @@ class HttpAPI:
                 self.userUsingGPU.unlock()
                 end_compressing_time = time.time()
 
+                # for stats
+                self.StorageReadTime.append(0)
+                self.CompTime.append(end_compressing_time-start_compressing_time)
+
                 print(f"time_to_compress={end_compressing_time-start_compressing_time}")
                 return compressed
             
@@ -156,8 +168,10 @@ class HttpAPI:
             self.L4Pref.InformL3Hit(blockId)
             self.L4Pref.InformUserPoint(blockId)
             self.L3Pref.InformUserPoint(blockId)
-            L3_hit_time = time.time()
-            print(f"time_to_read_from_l3={L3_hit_time-start_time}")
+
+            # for stats
+            self.StorageReadTime.append(0)
+            self.CompTime.append(0)
             return L3data
         
 
