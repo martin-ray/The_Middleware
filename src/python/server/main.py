@@ -82,17 +82,24 @@ class MyRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
 
         elif msgType == 'getStats':
+
             totalReqs = self.HttpAPI.numReqs
             nL3Hit = self.HttpAPI.numL3Hit
             nL4Hit = self.HttpAPI.numL4Hit
             StorageReadTime = self.HttpAPI.StorageReadTime
             CompTime = self.HttpAPI.CompTime
+            NumL3Prefetch = self.HttpAPI.L3Pref.numPrefetches
+            NumL3PrefetchL4Hit = self.HttpAPI.L4Pref.numL4Hits
+            numL4Prefetch = self.HttpAPI.L4Pref.numPrefetches
 
             # Create a dictionary with the stats
             stats_data = {
                 'ReqsToServer': totalReqs,
                 'nL3Hit': nL3Hit,
                 'nL4Hit': nL4Hit,
+                'NumL3Prefetch':NumL3Prefetch,
+                'NumL3PrefetchL4Hit':NumL3PrefetchL4Hit,
+                'numL4Prefetch':numL4Prefetch,
                 'StorageReadTime':StorageReadTime,
                 'CompTime':CompTime
             }

@@ -53,7 +53,7 @@ class ClientAPI:
         self.numL1Hit = 0
         self.numL2Hit = 0
         self.numReqTime = 0
-
+        self.DecompElapsed = [] 
 
     def reInit(self,L1CacheSize,L2CacheSize,L3CacheSize,L4CacheSize,blockSize,policy='LRU'):
         self.blockSize = blockSize
@@ -89,6 +89,7 @@ class ClientAPI:
         self.numL1Hit = 0
         self.numL2Hit = 0
         self.numReqTime = 0
+        self.DecompElapsed = []
 
         # 情報を出力
         print("restarting the system with the following setting:\n")
@@ -126,14 +127,21 @@ class ClientAPI:
 
 
     def L2MissHandler(self,blockId,BlockAndData):
+
         compressed = self.netIF.send_req_urgent_usr(blockId)
         self.L2Cache.put(blockId,compressed)
+
+        decomp_start = time.time()
         original = self.decompressor.decompress(compressed)
+        decomp_end = time.time()
+
+        self.DecompElapsed.append(decomp_end - decomp_start)
         BlockAndData[blockId] = original
 
     def L1HitHandler(self,blockId,L2data,BlockAndData):
         original = self.decompressor.decompress(L2data)
         self.L1Cache.put(blockId,original)
+        self.DecompElapsed.append(0)
         BlockAndData[blockId] = original
 
     def getBlocksById(self, blockId):
@@ -151,9 +159,11 @@ class ClientAPI:
             L1data = self.L1Cache.get(blockId)
             self.L2pref.InformUserPoint(blockId)
             self.L1pref.InformUserPoint(blockId)
+
             if L1data is None:
                 self.L1pref.InformL1MissByUser(blockId)
                 L2data = self.L2Cache.get(blockId)
+
                 if L2data is None:
                     self.numReqTime += 1
                     self.L2pref.InformL2MissByUser(blockId)
@@ -244,7 +254,10 @@ class ClientAPI:
         return BlockIds
 
     def GetStats(self):
+        # サーバからのスタッツを取ってくる
         stats = self.netIF.requestStats()
+
+        # クライアント側のスタッツ
         stats["nL1Hit"] = self.numL1Hit
         stats["nL2Hit"] = self.numL2Hit
         stats["reqs"] = self.numReqTime

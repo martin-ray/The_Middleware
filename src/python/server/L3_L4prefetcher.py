@@ -4,6 +4,7 @@ import numpy as np
 import threading
 import time
 from slice import Slicer
+from slice import TileDBSlicer
 from compressor import compressor
 import queue
 
@@ -24,8 +25,8 @@ class L3Prefetcher:
         self.L4Cache = L4Cache
 
         # L3PrefetcherとL4Prefetcherで別々のもの持ってないと片方が一生使えなくなる->そんなことはないっぽいけど、別々に持ってた方がいい性能が出るんだよね。
-        self.Slicer = Slicer(blockOffset=blockOffset)
-        self.compressor = compressor(self.L3Cache)
+        self.Slicer = TileDBSlicer(blockOffset=blockOffset)
+        self.compressor = compressor(self.L3Cache,device_id=0)
         self.L4Pref = L4Prefetcher
 
         # 取りに行く予定があるブロックのセット (重複を避けるために)
@@ -57,7 +58,9 @@ class L3Prefetcher:
             # 最初のブロックを投下。最初は絶対にミスしますが。
             self.enqueue_first_blockId()
 
-
+        # for stats
+        self.numPrefetches = 0
+        self.numL4Hits = 0
 ############### 初期化系のメソッド ###########
             
     def startPrefetching(self):
@@ -65,13 +68,17 @@ class L3Prefetcher:
         if self.L3Cache.capacityInMiB > 0:
             self.thread = threading.Thread(target=self.thread_func)
             self.thread.start()
+            self.numPrefetches = 0
+            self.numL4Hits = 0
             self.enqueue_first_blockId()
             print("restarted L3 prefetcher!")
         else :
             print("L3 cache size is 0. So L3 prefetcher is not starting")
 
+    # プリフェッチスレッドを停止
     def stop(self):
         self.stop_thread = True
+        # return {"numPrefetch":self.numPrefetches,"numL4Hits":self.numL4Hits}
 
     def InitializeSetting(self,blockOffset):
         self.Slicer.changeBlockSize(blockOffset)
@@ -104,22 +111,29 @@ class L3Prefetcher:
                 
                 print("L3 PREFETCHER IS READING FROM STORAGE")
                 nextBlockId,distance = self.pop_front()
-                if distance > self.radius:
+
+                if distance > self.radius: # このdistanceを一回一回更新した方がいいのではないか？てか、これを優先度つきのキューで持ちたいんだが。
                     print("the block in the prefetch queue is no more needed")
                     continue
+
+                self.numPrefetches += 1
                 original = self.L4Cache.get(nextBlockId)
                 if original is None:
+                    
                     try:
+                        # L4のプリフェッチ予定から削除
                         self.L4Pref.prefetch_q.remove(nextBlockId)
                         print("succeed in deleting {} in L4's prefetch Q".format(nextBlockId))
                     except Exception as e:
                         pass
+
                     d = self.Slicer.sliceData(nextBlockId)
                     self.L4Cache.put(nextBlockId,d) # write to L4 also (inclusive)
                     tol = nextBlockId[0]
                     compressed = self.compressor.compress(d,tol)
                     self.L3Cache.put(nextBlockId,compressed)
                 else:
+                    self.numL4Hits
                     print("L4 HIT! when L3 Prefetching from L4",nextBlockId,"distance:",distance)
                     tol = nextBlockId[0]
                     compressed = self.compressor.compress(original,tol)
@@ -285,7 +299,8 @@ class L4Prefetcher:
         self.userUsingGPU = userUsingGPU
         self.userUsingStorage = userUsingStorage
         self.L4Cache = L4Cache
-        self.Slicer = Slicer(blockOffset=blockSize)
+        # self.Slicer = Slicer(blockOffset=blockSize)
+        self.Slicer = TileDBSlicer(blockOffset=blockSize)
         self.Tols = [0.0001,0.001,0.01,0.1,0.2,0.3,0.4,0.5]
         self.dataDim = dataDim
         self.maxTimestep = dataDim[0]
@@ -298,6 +313,7 @@ class L4Prefetcher:
         self.prefetch_q = deque()
         self.stop_thread = False
         self.thread = None
+        self.userPoint = None
 
 
         # 計算式が間違っているか、そんな気がする。
@@ -313,6 +329,8 @@ class L4Prefetcher:
             self.thread.start()
             self.enqueue_first_blockId()
 
+        # for stats
+        self.numPrefetches = 0
     ####################### 初期化系メソッド ###########################
             
     def getRadiusFromCapacity(self):
@@ -331,10 +349,10 @@ class L4Prefetcher:
         if self.L4Cache.capacityInMiB > 0:
             self.thread = threading.Thread(target=self.thread_func)
             self.thread.start()
-            self.enqueue_first_blockId()
-            print("restarted L4 prefetcher!")
+            self.numPrefetches = 0
+            print("Restarted L4 prefetcher")
         else :
-            print("L4 cache size is 0. So L4 prefetcher is not starting")
+            print("L4 cache size is 0 so L4 prefetcher is not starting")
         
     def changeBlockOffset(self,blockOffset):
         self.blockOffset = blockOffset
@@ -342,6 +360,7 @@ class L4Prefetcher:
     # プリフェッチスレッドを停止するメソッド
     def stop(self):
         self.stop_thread = True
+        # return {"numPrefetch":self.numPrefetches}
 
     def InitializeSetting(self,blockOffset):
         self.Slicer.changeBlockSize(blockOffset)
@@ -362,8 +381,12 @@ class L4Prefetcher:
             # ここで帯域幅の奪い合いが生じる。どうする！
             if (not self.prefetch_q_empty()) and (self.L4Cache.usedSizeInMiB <  self.L4Cache.capacityInMiB) and (not self.userUsingStorage.is_locked()):
                 nextBlockId,distance = self.pop_front()
+                # distanceがいらない説が出てきた。
+                # というのも、distanceは、キューに入れられた時点でのuserとの距離なわけじゃないですか。
+                # その代わり、ユーザの位置はクラス内で持っておく必要がある気がしてきた。
                 if distance > self.radius:
                     continue
+                self.numPrefetches += 1
                 data = self.Slicer.sliceData(nextBlockId)
                 self.L4Cache.put(nextBlockId,data)
                 self.prefetchedSet.add(nextBlockId)
@@ -492,7 +515,7 @@ class L4Prefetcher:
         zHops = abs(centerBlockId[4]- targetBlockId[4])
         spaceHops = max(xHops,yHops,zHops)//self.blockOffset # これでホップ数が出る
         return timeHops + spaceHops
-    
+
     def enqueue_blockId(self,blockId):
         self.prefetch_q.append(blockId)
 
@@ -502,6 +525,7 @@ class L4Prefetcher:
 
     def InformUserPoint(self,blockId):
         print(f"L4:user is at{blockId}")
+        self.userPoint = blockId
         start = time.time()
         self.evict(blockId)
         self.updatePrefetchQ(blockId)
