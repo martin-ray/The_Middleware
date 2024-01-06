@@ -13,6 +13,7 @@ import subprocess
 
 interface = "eno1"
 initial_latency = "0ms"
+serverURL = "http://172.20.2.254:8080" # muffin2
 
 # simTim : 追加してくれ
 def OneExp(tol,L1Size,L2Size,L3Size,L4Size,blockSize,request_sequence,analisisTime=0,networkLatency=0,num_gpus=1):
@@ -21,7 +22,7 @@ def OneExp(tol,L1Size,L2Size,L3Size,L4Size,blockSize,request_sequence,analisisTi
     print(reqs)
     numReqs = len(reqs)
     cli = ClientAPI(L1Size=L1Size,L2Size=L2Size,L3Size=L3Size,L4Size=L4Size,
-                    blockSize=blockSize)
+                    blockSize=blockSize,serverURL=serverURL)
     
     print("creating tiledb client")
     tiledbCli = TiledbConnector(L1Size+L2Size)
@@ -71,11 +72,20 @@ def OneExp(tol,L1Size,L2Size,L3Size,L4Size,blockSize,request_sequence,analisisTi
     stats["lower_bound"] = lower_bound
     stats["upper_bound"] = upper_bound
     stats["std_dev"] = std_dev
-
+    # stop 
     cli.StopPrefetching()
+    stats["networktimes"] = latencies - stats["StorageReadTime"] - stats["CompTime"] - stats["DecompElapsed"]
+    print("StorageReadTime:",stats["StorageReadTime"])
+    print("CompTime:",stats["CompTime"])
+    print("networktimes:",stats["networktimes"])
+    print("Decomptimes:",stats["DecompElapsed"])
+    print(stats["NumL3Prefetch"])
+    print(stats["NumL3PrefetchL4Hit"])
+    print(stats["numL4Prefetch"])
 
 
 
+    # TileDB experiment from here
     start_time = time.time()
     tiledbBytes = 0
     print(f"l1={L1Size},l2={L2Size},l3={L3Size},l4={L4Size}")
@@ -130,6 +140,7 @@ if __name__ == "__main__":
 
     # L4Sizes = [0,512, 1024, 2048, 4096, 4096*2 ,4096*4]
     L4Sizes = [0,2048,2048*2,2048*4,2048*8]
+    # L4Sizes = [0,2048,2048*2,]
     # blockSizes = [64, 128, 256, 512]
     
     # 大事なのは、ブロックはやり取りをする基本単位である、というだけで、リクエストの大きさは変えないってことね。大事。
@@ -138,7 +149,7 @@ if __name__ == "__main__":
     num_requests = [50, 100, 200, 400, 800]
     
     # randomRatios = np.arange(0,100,25) # 何パーセントランダムか？0の時は、完全に連続。100の時は完全にランダム
-    randomRatios = 0
+    randomRatios = [0]
 
     anal_time = [0, 0.1, 0.3, 0.5]
 
