@@ -10,8 +10,11 @@ import time
 import concurrent.futures
 
 class ClientAPI:
-    def __init__(self,L1Size, L2Size, L3Size, L4Size,blockSize=256,L1PrefOn=True,L2PrefOn=True,L3PrefOn=True,L4PrefOn=True):
+    def __init__(self,L1Size, L2Size, L3Size, L4Size,blockSize=256,
+                 L1PrefOn=True,L2PrefOn=True,L3PrefOn=True,L4PrefOn=True,
+                 serverURL="http://172.20.2.254:8080"): 
 
+        self.serverURL = serverURL
         self.L1CacheSize = L1Size
         self.L2CacheSize = L2Size
         self.L3CacheSize = L3Size
@@ -29,7 +32,7 @@ class ClientAPI:
         self.decompressor = Decompressor(L1Cache=self.L1Cache)
 
         # sendLoop threadはconstructorの中で起動
-        self.netIF = NetIF(L2Cache=self.L2Cache)
+        self.netIF = NetIF(L2Cache=self.L2Cache,serverURL=self.serverURL)
 
         # 初期コンタクト。ワンフェッチでのデータサイズを規定
         response_code = self.netIF.firstContact(BlockOffset=blockSize,L3Size=L3Size,L4Size=L4Size)
@@ -40,7 +43,7 @@ class ClientAPI:
             print("initalization success")
 
         # fetchLoop threadはconstructorの中で起動
-        self.L2pref = L2Prefetcher(L2Cache=self.L2Cache,GPUmutex=self.GPUmutex) 
+        self.L2pref = L2Prefetcher(L2Cache=self.L2Cache,GPUmutex=self.GPUmutex,serverURL=self.serverURL) 
 
         # fetchLoop threadはconstructorの中で起動。L1prefは自分でdecompressorのインスタンスを持っている
         self.L1pref = L1Prefetcher(L1Cache=self.L1Cache,L2Cache=self.L2Cache,offsetSize=self.blockOffset,GPUmutex=self.GPUmutex)
@@ -261,4 +264,5 @@ class ClientAPI:
         stats["nL1Hit"] = self.numL1Hit
         stats["nL2Hit"] = self.numL2Hit
         stats["reqs"] = self.numReqTime
+        stats["DecompElapsed"] = self.DecompElapsed
         return stats
