@@ -15,10 +15,10 @@ import threading
 import requests
 
 class NetIF:
-    def __init__(self,L2Cache,serverIp="http://172.20.2.253:8080"):
+    def __init__(self,L2Cache,serverURL="http://172.20.2.253:8080"):
         self.L2Cache = L2Cache
         self.sendQ = deque() 
-        self.URL = serverIp
+        self.URL = serverURL
         # ここで、送信スレッドを起動する
         self.thread = threading.Thread(target=self.net_thread_func)
         self.thread.start()
@@ -141,15 +141,17 @@ class NetIF:
             else:
                 BlockId = self.sendQ.popleft()
                 
-                header = {
-                    'type':'BlockReq',
-                    'tol':str(BlockId[0]),
-                    'timestep':str(BlockId[1]),
-                    'x': str(BlockId[2]),
-                    'y': str(BlockId[3]),
-                    'z': str(BlockId[4])
-                }
                 try:
+                    
+                    header = {
+                        'type':'BlockReq',
+                        'tol':str(BlockId[0]),
+                        'timestep':str(BlockId[1]),
+                        'x': str(BlockId[2]),
+                        'y': str(BlockId[3]),
+                        'z': str(BlockId[4])
+                    }
+
                     response = requests.get(self.URL,headers=header)
                     self.L2Cache.put(BlockId,response.content)
                 except Exception as e:
