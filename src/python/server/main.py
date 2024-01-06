@@ -89,7 +89,7 @@ class MyRequestHandler(http.server.SimpleHTTPRequestHandler):
             StorageReadTime = self.HttpAPI.StorageReadTime
             CompTime = self.HttpAPI.CompTime
             NumL3Prefetch = self.HttpAPI.L3Pref.numPrefetches
-            NumL3PrefetchL4Hit = self.HttpAPI.L4Pref.numL4Hits
+            NumL3PrefetchL4Hit = self.HttpAPI.L3Pref.numL4Hits
             numL4Prefetch = self.HttpAPI.L4Pref.numPrefetches
 
             # Create a dictionary with the stats
