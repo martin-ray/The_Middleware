@@ -1,29 +1,44 @@
 import socket
 
-# Define the server address and port
-server_address = ('localhost', 12345)
+class ServerClient:
+    def __init__(self, server_address=('localhost', 12345)):
+        self.server_address = server_address
+        self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-# Create a socket to connect to the server
-client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    def connect(self):
+        try:
+            self.client_socket.connect(self.server_address)
+            print("Connected to the server")
+        except Exception as e:
+            print("Error:", str(e))
 
-try:
-    # Connect to the server
-    client_socket.connect(server_address)
+    def send_command(self, command):
+        try:
+            # Send the command to the server
+            self.client_socket.send(command.encode())
+            print("Command sent to server")
 
-    # Command to clear the page cache
-    command = "echo 1 > /proc/sys/vm/drop_caches"
+            # Receive the response from the server
+            response = self.client_socket.recv(1024).decode()
+            print("Server response:", response)
+        except Exception as e:
+            print("Error:", str(e))
 
-    # Send the command to the server
-    client_socket.send(command.encode())
-    print("Command sent to server")
+    def close(self):
+        try:
+            # Close the client socket
+            self.client_socket.close()
+            print("Client socket closed")
+        except Exception as e:
+            print("Error:", str(e))
 
-    # Receive the response from the server
-    response = client_socket.recv(1024).decode()
-    print("Server response:", response)
+# Example usage:
+if __name__ == "__main__":
+    client = ServerClient()
+    client.connect()
 
-except Exception as e:
-    print("Error:", str(e))
+    command_to_send = "echo 1 > /proc/sys/vm/drop_caches"
+    client.send_command(command_to_send)
 
-finally:
-    # Close the client socket
-    client_socket.close()
+    client.close()
+
