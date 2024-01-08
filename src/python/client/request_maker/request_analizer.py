@@ -30,24 +30,40 @@ def max_distance_calculator(reqs):
 
     return max_distance
 
-blockSize = 256
-maxtimestep=63
-num_request = 64
-randomRatio = 0
+def request_analiser(reqs):
+    num_request = len(reqs)
 
-reqMaker = requestMaker(blockSize,maxtimestep)
-reqs = reqMaker.randAndcontMixRequester(num_request,randomRatio)
+    num_of_recycle_access = recycle_counter(reqs)
+    recycle_ratio = num_of_recycle_access/num_request
 
-num_of_recycle_access = recycle_counter(reqs)
-recycle_ratio = num_of_recycle_access/num_request
+    max_distance = max_distance_calculator(reqs)
+    access_density = 1- max_distance/num_request
 
-max_distance = max_distance_calculator(reqs)
-access_dencity = 1- max_distance/num_request
+    return {"recycle_ratio":recycle_ratio,
+            "maxDistance":max_distance,
+            "access_density":access_density}
 
-print(f"num_requests={num_request}\n\
-      num_of_recycle_access={num_of_recycle_access} \
-      recycle_ratio={recycle_ratio}\n \
-        max__distance={max_distance} \
-        access_dencity={access_dencity} \
-        ")
+
+
+if __name__ == "__main__":    
+    blockSize = 256
+    maxtimestep=63
+    num_request = 64
+    randomRatio = 0
+
+    reqMaker = requestMaker(blockSize,maxtimestep)
+    reqs = reqMaker.randAndcontMixRequester(num_request,randomRatio)
+
+    num_of_recycle_access = recycle_counter(reqs)
+    recycle_ratio = num_of_recycle_access/num_request
+
+    max_distance = max_distance_calculator(reqs)
+    access_dencity = 1- max_distance/num_request
+
+    print(f"num_requests={num_request}\n\
+        num_of_recycle_access={num_of_recycle_access} \
+        recycle_ratio={recycle_ratio}\n \
+            max__distance={max_distance} \
+            access_dencity={access_dencity} \
+            ")
 
