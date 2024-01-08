@@ -1,18 +1,12 @@
-import requests
-import numpy as np
-import matplotlib.pyplot as plt
-import queue
 from collections import deque
 import asyncio
-import numpy as np
 import threading
-# self-defined libraries
-import _mgard as mgard
-from L1_L2Cache import LRU_cache
+
 # from L1_L2Cache import dynamic_cache
 from NetInterface import NetIF
 from decompressor import Decompressor
 import time
+
 
 class L2Prefetcher:
 
@@ -72,13 +66,13 @@ class L2Prefetcher:
     async def fetchLoop(self):
         while not self.stop_thread:
             if (not self.prefetch_q_empty()) and (self.L2Cache.usedSizeInMiB < self.L2Cache.capacityInMiB):
-                # self.L2Cache.printInfo()
-                nextBlockId = self.pop_front()
-                self.Netif.send_req(nextBlockId) # 別スレッドで実行されるネット呼び出し
-                self.enque_neighbor_blocks(nextBlockId)
+
+                nextBlockId,d = self.pop_front()
+                compressed = self.Netif.send_req_urgent(nextBlockId)
+                self.L2Cache.put(nextBlockId,compressed)
+                self.enque_neighbor_blocks(nextBlockId,d) # ここ、あってるかもう一度確認してくれ。頼む。
             else:
-                print("L2 prefetcher not prefetcing because prefetcing Q is empty or cache is full")
-                await asyncio.sleep(0.1)  # Sleep for 1 second, or adjust as needed
+                await asyncio.sleep(0.01)  # Sleep for 1 second, or adjust as needed
 
     def thread_func(self):
         loop = asyncio.new_event_loop()
@@ -93,6 +87,7 @@ class L2Prefetcher:
 
     ################## 置換、プリフェッチ系メソッド ############### 
     def enque_neighbor_blocks(self,centerBlock,d):
+            print(centerBlock)
             tol = centerBlock[0] 
             timestep = centerBlock[1]
             x = centerBlock[2]
@@ -164,7 +159,7 @@ class L2Prefetcher:
         print("L1 prefetcher missed to catch on L2 cache:{}\n".format(blockId))
 
     def InformL2MissByUser(self,blockId):
-        print("L1 and L2 Missed the request by user:{}\n",blockId)
+        # print("L1 and L2 Missed the request by user:{}\n",blockId)
         self.prefetchedSet.add(blockId)
 
     def InformL1MissL2HitByUser(self,blockId):
@@ -179,18 +174,12 @@ class L2Prefetcher:
         return timeHops + spaceHops
 
     def InformUserPoint(self,blockId):
-        print(f"L2:user is at{blockId}")
         self.userPoint = blockId
-        start = time.time()
         self.evict(blockId)
         self.updatePrefetchQ(blockId)
-        end = time.time()
-        print(f"L2:time to update cache info = {end - start}")
 
-    # ここ結構時間かかりそうだけど、大丈夫？
     def evict(self,userPoint):
-        # キャッシュの要素を取り出していく。
-        print("evicting")
+        # print("evicting")
         for blockId in self.L2Cache.cache.keys():
             hops = self.calHops(userPoint,blockId)
             if (hops > self.radius) and self.L2Cache.isCacheFull():
@@ -226,6 +215,8 @@ class L1Prefetcher:
         self.thread = None
         self.userPoint = None
 
+        self.radius = self.getRadiusFromCapacity()
+
         # GPUのmutex
         self.GPUmutex = GPUmutex
 
@@ -243,9 +234,9 @@ class L1Prefetcher:
         if self.L3Cache.capacity > 0:
             self.thread = threading.Thread(target=self.thread_func)
             self.thread.start()
-            print("restarted L3 prefetcher!")
+            print("Started L1 prefetcher!")
         else :
-            print("L3 cache size is 0. So L3 prefetcher is not starting")
+            print("L1 cache size is 0. So L1 prefetcher is not starting")
 
     def stop(self):
         self.stop_thread = True
@@ -272,20 +263,16 @@ class L1Prefetcher:
                 compressed = self.L2Cache.get(nextBlockId)
 
                 if compressed is None: # L2Miss
-                    # これをあきらめる。
-                    # compressed = self.Netif.send_req_urgent(nextBlockId)
-                    # original = None
-                    # with self.GPUmutex:
-                    #     original = self.decompressor.decompress(compressed)
-                    # self.L1Cache.put(nextBlockId,original)
+                    # これ以上、下にリクエストするのをあきらめる
                     pass
+
                 else: # L2Hit
                     original = None
                     with self.GPUmutex:
                         original = self.decompressor.decompress(compressed)
                     self.L1Cache.put(nextBlockId,original)   
 
-                self.enque_neighbor_blocks(nextBlockId)
+                self.enque_neighbor_blocks(nextBlockId,distance)
             else:
                 await asyncio.sleep(0.1)  # Sleep for 0.1 second, or adjust as needed
 
@@ -360,18 +347,14 @@ class L1Prefetcher:
         return self.prefetch_q.popleft()
     
     def InformUserPoint(self,blockId):
-        print(f"L1:user is at{blockId}")
+
         self.userPoint = blockId
-        start = time.time()
         self.evict(blockId)
         self.updatePrefetchQ(blockId)
-        end = time.time()
-        print(f"L1:time to update cache info = {end - start}")
+
 
     def InformL1MissByUser(self,blockId):
         print("User missed to catch in L1: {}\n".format(blockId))
-
-        # self.enque_neighbor_blocks(blockId)
 
     def InformL1MissAndL2Hit(self,blockId):
         print("User missed to catch in L1 and Hit on L2: {}\n".format(blockId))
@@ -387,11 +370,8 @@ class L1Prefetcher:
         else:
             return False
 
-
-    # ここ結構時間かかりそうだけど、大丈夫？
+    # キャッシュの要素をひとつづつ見て、半径に収まらない場合は、捨てる
     def evict(self,userPoint):
-        # キャッシュの要素を取り出していく。
-        print("evicting")
         for blockId in self.L1Cache.cache.keys():
             hops = self.calHops(userPoint,blockId)
             if (hops > self.radius) and self.L1Cache.isCacheFull():
@@ -410,7 +390,17 @@ class L1Prefetcher:
         spaceHops = max(xHops,yHops,zHops)//self.blockOffset # これでホップ数が出る
         return timeHops + spaceHops
 
-
+    def getRadiusFromCapacity(self):
+        capacityInMiB = self.L1Cache.capacityInMiB
+        OneElementSizeInByte = 4
+        blockSizeInByte = OneElementSizeInByte*self.blockOffset**3
+        radius = 0
+        print(f"capacityInMiB = {capacityInMiB},blockSizeInByte={blockSizeInByte}")
+        while((2*radius+1)**3 +2 <= capacityInMiB*1024*1024/blockSizeInByte):
+            radius += 1
+        print(f"L1 caches radius={radius}")
+        return radius
+    
 # unit test
 if __name__ == "__main__":
     print("test")
