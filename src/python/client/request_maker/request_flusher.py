@@ -21,7 +21,7 @@ for _ in range(256*10):
     accessDensity = round(access_report["access_density"]*100,2)
 
     # save the access pattern to file
-    filename = f'./request_files/numReqs={numReqs}_recycleRatio={recycleRatio}_accessDensity={accessDensity}.pkl'
+    filename = f'./request_files/numReqs={numReqs}_recycleRatio={recycleRatio}_maxdistance={maxdistance}_accessDensity={accessDensity}.pkl'
 
     # Save the data to a file
     with open(filename, 'wb') as file:
