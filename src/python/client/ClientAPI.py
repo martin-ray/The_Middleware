@@ -24,23 +24,21 @@ class ClientAPI:
         # GPUの利用権。できればロックフリーにしたいんだけど、さすがに俺には難しい。
         self.GPUmutex = threading.Lock()
         
-        # コンポーネント
-        # self.L1Cache = LRU_cache(self.L1CacheSize,self.blockOffset)
-        # self.L2Cache = LRU_cache(self.L2CacheSize,self.blockOffset)
+
         self.L1Cache = spatial_cache(self.L1CacheSize,self.blockOffset)
         self.L2Cache = spatial_cache(self.L2CacheSize,self.blockOffset)
         self.decompressor = Decompressor(L1Cache=self.L1Cache)
 
-        # sendLoop threadはconstructorの中で起動
+        # sendLoop threadはconstructorの中で起動 -> いや、起動しなくてよくね？L2が自分で取りに行く方式にする
         self.netIF = NetIF(L2Cache=self.L2Cache,serverURL=self.serverURL)
 
-        # 初期コンタクト。ワンフェッチでのデータサイズを規定
+        # 初期コンタクト
         response_code = self.netIF.firstContact(BlockOffset=blockSize,L3Size=L3Size,L4Size=L4Size)
         if (response_code != 200):
             print("initialization failed in server.")
             exit(0)
         else:
-            print("initalization success")
+            print("Initalization Success")
 
         # fetchLoop threadはconstructorの中で起動
         self.L2pref = L2Prefetcher(L2Cache=self.L2Cache,GPUmutex=self.GPUmutex,serverURL=self.serverURL) 
@@ -95,7 +93,7 @@ class ClientAPI:
         self.DecompElapsed = []
 
         # 情報を出力
-        print("restarting the system with the following setting:\n")
+        print("Restarting the system with the following setting:\n")
         print("L3Size:{}\nL4Size:{}\nblockSize:{}\n".format
               (self.L1CacheSize,
                self.L2CacheSize,
@@ -104,31 +102,28 @@ class ClientAPI:
                self.blockSize,
                ))
         
-        print("sending the info to server")
+        
         self.netIF.reInitRequest(self.blockOffset,L3CacheSize,L4CacheSize)
+        print("Request accepted by the Server")
 
-        time.sleep(6) # give the server some time to warm up
-        print("start prefetching")
+        time.sleep(6) # give the server some time
+        print("Start prefetching")
 
-        # # プリフェッチを開始
+        # プリフェッチを開始
         self.L2pref.startPrefetching()
         self.L1pref.startPrefetching()
 
     def StopPrefetching(self):
-        print("stopping the prefetch thread")
+        print("Stopping the prefetch thread")
         self.L1pref.stop()
         self.L2pref.stop()
         
-        # キャッシュをクリア
-        print("clearing the cache")
+        print("Clearing the cache")
         self.L1Cache.clearCache()
         self.L2Cache.clearCache()    
 
-        self.L2pref.Netif.sendQ.clear()
-        self.L1pref.Netif.sendQ.clear()
-        self.netIF.sendQ.clear()
-
-
+    
+    
     def L2MissHandler(self,blockId,BlockAndData):
 
         compressed = self.netIF.send_req_urgent_usr(blockId)
@@ -138,50 +133,69 @@ class ClientAPI:
         original = self.decompressor.decompress(compressed)
         decomp_end = time.time()
 
+        self.L1Cache.put(blockId,original)
+        print("Put Data to L1 by L2MissHandler!")
         self.DecompElapsed.append(decomp_end - decomp_start)
         BlockAndData[blockId] = original
 
-    def L1HitHandler(self,blockId,L2data,BlockAndData):
-        original = self.decompressor.decompress(L2data)
+
+    def L2HitHandler(self,blockId,BlockAndData):
+        
+        compressed = self.L2Cache.get(blockId)
+
+        decomp_start = time.time()
+        original = self.decompressor.decompress(compressed)
+        decomp_end = time.time()
+
         self.L1Cache.put(blockId,original)
-        self.DecompElapsed.append(0)
+        print("Put Data to L1 by L2HitHandler!")
+        self.DecompElapsed.append(decomp_end - decomp_start)
         BlockAndData[blockId] = original
 
     def getBlocksById(self, blockId):
         pass
 
+
     def getBlocks(self, tol, timestep, x, y, z, xEnd, yEnd, zEnd):
         req = (x,xEnd,y,yEnd,z,zEnd)
-        print("request:",req)
+        # print("request:",req)
         BlockIds = self.Block2BlockIds(tol, timestep, x, y, z, xEnd, yEnd, zEnd)
-        print("to ",BlockIds)
+        # print("to ",BlockIds)
         BlockAndData = {}
         threads = []
 
         for blockId in BlockIds:
             L1data = self.L1Cache.get(blockId)
+
+            # inform user point to all prefetchers
             self.L2pref.InformUserPoint(blockId)
             self.L1pref.InformUserPoint(blockId)
+            self.netIF.send_user_point(blockId)
 
-            if L1data is None:
+            if L1data is None: # L1 Miss
+
+                print("L1 Miss Happend")
                 self.L1pref.InformL1MissByUser(blockId)
                 L2data = self.L2Cache.get(blockId)
 
-                if L2data is None:
+                if L2data is None: # L2 Miss
+                    print("L2 Miss Happend")
                     self.numReqTime += 1
                     self.L2pref.InformL2MissByUser(blockId)
                     future = self.thread_pool.submit(self.L2MissHandler, blockId, BlockAndData)
                     threads.append(future)
-                else:
-                    self.netIF.send_user_point(blockId)
+
+                else: # L2 Hit
+                    print("L2 Hit")
                     self.numL2Hit += 1
                     self.L2pref.InformL1MissL2HitByUser(blockId)
-                    future = self.thread_pool.submit(self.L1HitHandler, blockId, L2data, BlockAndData)
+                    future = self.thread_pool.submit(self.L2HitHandler, blockId, BlockAndData)
                     threads.append(future)
-            else:
-                self.netIF.send_user_point(blockId)
+
+            else: # L1 Hit!
+                print("L1 hit")
+                self.DecompElapsed.append(0)
                 self.numL1Hit += 1
-                print("L1 hit!")
                 BlockAndData[blockId] = L1data
 
         concurrent.futures.wait(threads)
@@ -192,42 +206,6 @@ class ClientAPI:
         return recompsedArray
     
 
-    def L1MissOriginalHandler(self,blockId,BlockAndData):
-        original = self.netIF.send_req_original_urgent(blockId)
-        self.L1Cache.put(blockId,original)
-        BlockAndData[blockId] = original
-
-
-    def getBlocksNoComp(self, tol, timestep, x, y, z, xEnd, yEnd, zEnd):
-        req = (x,xEnd,y,yEnd,z,zEnd)
-        print("request:",req)
-        BlockIds = self.Block2BlockIds(tol, timestep, x, y, z, xEnd, yEnd, zEnd)
-        print("to ",BlockIds)
-        BlockAndData = {}
-        threads = []
-
-        for blockId in BlockIds:
-            L1data = self.L1Cache.get(blockId)
-            if L1data is None:
-                self.numReqTime += 1
-                self.L1pref.InformL1MissByUser(blockId)
-                future = self.thread_pool.submit(self.L1MissOriginalHandler, blockId, BlockAndData)
-                threads.append(future)
-            else:
-                self.numL1Hit += 1
-                # L1でヒット
-                print("L1 hit!")
-                BlockAndData[blockId] = L1data
-
-        concurrent.futures.wait(threads)
-
-        # BlockAndData = (key,value) = (blockId,OriginalData),  xyzRange = (x,xOffset,y,yOffset,z,zOffset) -> recomposed data.
-        xyzRange = (x,xEnd,y,yEnd,z,zEnd)
-        recompsedArray = self.recomposer.recompose(BlockAndData,xyzRange)
-        return recompsedArray
-    
-
-    
     # 端っこは切り上げ、下側は切り下げ
     def Block2BlockIds(self,tol,timestep,x,y,z,xEnd,yEnd,zEnd):
         xStartIdx = x//self.blockOffset*self.blockOffset
