@@ -145,6 +145,7 @@ singularity shell --bind /scratch/:/scratch/ --nv  pymgard.sif
 ~/new_research/The_middleware/container
 singularity shell --nv --bind /scratch/:/scratch/ szp7.sif
 export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
+export PYTHONPATH=/usr/local/python/cuSZp/
 ```
 
 ## 変数とほしいデータ
