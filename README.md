@@ -145,6 +145,8 @@ singularity shell --bind /scratch/:/scratch/ --nv  pymgard.sif
 ~/new_research/The_middleware/container
 singularity shell --nv --bind /scratch/:/scratch/ szp7.sif
 export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
+~/new_research/The_middleware/component_bench/cuSZp/
+nvcc compress_bench.cpp -lcudart -I/usr/include/hdf5/serial -L/usr/lib/x86_64-linux-gnu/hdf5/serial/ -I /usr/local/include/cuSZp/ -lhdf5 -lcuSZp -lcudart -lcudadevrt -lcudart
 ./a.out 1 128 128 128 0.001
 ```
 
