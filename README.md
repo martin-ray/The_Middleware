@@ -145,7 +145,14 @@ singularity shell --bind /scratch/:/scratch/ --nv  pymgard.sif
 ~/new_research/The_middleware/container
 singularity shell --nv --bind /scratch/:/scratch/ szp7.sif
 export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
+./a.out 1 128 128 128 0.001
+```
+
+# cuszpyの実行環境の起動方法 (こっちはなんでかわからんけど、/usr/local/lib/の方の共有ライブラリをリンクしようとするとバグる)
+```
 export PYTHONPATH=/usr/local/python/cuSZp/
+ではなく、
+export PYTHONPATH=/path/to/
 ```
 
 ## 変数とほしいデータ
