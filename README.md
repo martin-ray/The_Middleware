@@ -157,8 +157,39 @@ libcuSZp.soへのリンクパスを通すときに、以下のようにやりが
 ```
 NG:export LD_LIBRARY_PATH=$(pwd)
 OK:export LD_LIBRARY_PATH=$(pwd):$LD_LIBRARY_PATH
+```
+
+# デバイスポインターではなく、ホストポインターを使ったバージョンでベンチマークを測定する方法
+```
+singularity shell --nv --bind /scratch:/scratch szp7.sif
+cd ../third_party/cuSZp/build/
+export LD_LIBRARY_PATH=$(pwd):$LD_LIBRARY_PATH
+cd ~/new_research/The_middleware/component_bench/cuSZp
+nvcc compress_bench2.cpp -lcudart -I/usr/include/hdf5/serial -L/usr/lib/x86_64-linux-gnu/hdf5/serial/ -I /usr/local/include/cuSZp/ -lhdf5 -lcuSZp -lcudart -lcudadevrt -lcudart
+```
+
+一応、third_party/cuSZp/buildの中の共有ライブラリが、int -> size_tを変更したソースになります。そこが大事なのかわからないけど。
+
+# cuSZp_entry_f32.cuのバグ発見について
+マジで、これバグじゃね？
 
 ```
+size_t bsize = cmp_tblock_size_f32;
+size_t gsize = (nbEle + bsize * cmp_chunk_f32 - 1) / (bsize * cmp_chunk_f32);
+size_t cmpOffSize = gsize + 1;
+size_t pad_nbEle = gsize * bsize * cmp_chunk_f32;
+```
+
+ここのsize_tがintになっていたんだよね。これ、オーバフローを起こすことあるでしょ。pad_nbEleとかさ。マジである。
+cmp_tblock_size_f32 = 32
+cmp_chunk_f32 = 8192
+nbEle = 1000*1000*1000 = 1000000000で、まあ一回入れてみよう
+bsize = 32
+gsize = (100000000 + 32*8192 - 1) / (32*8192)
+cmpOffSize = 32
+pad_nbEle = (100000000 + 32*8192 - 1) / (32*8192) * 32 * 8192
+いや、セーフか？？セーフな気がした。
+1024**3はどうなんだ。
 
 # cuszpyの実行環境の起動方法 (こっちはなんでかわからんけど、/usr/local/lib/の方の共有ライブラリをリンクしようとするとバグる)
 ```
