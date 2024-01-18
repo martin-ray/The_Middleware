@@ -149,6 +149,16 @@ export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
 nvcc compress_bench.cpp -lcudart -I/usr/include/hdf5/serial -L/usr/lib/x86_64-linux-gnu/hdf5/serial/ -I /usr/local/include/cuSZp/ -lhdf5 -lcuSZp -lcudart -lcudadevrt -lcudart
 ./a.out 1 128 128 128 0.001
 ```
+ここが頼みの綱です。よろしくお願いする。
+
+# 注意
+libcuSZp.soへのリンクパスを通すときに、以下のようにやりがちですが、
+これだと、ほかのプログラムの実行に必要なライブラリがリンクできなくなります。
+```
+NG:export LD_LIBRARY_PATH=$(pwd)
+OK:export LD_LIBRARY_PATH=$(pwd):$LD_LIBRARY_PATH
+
+```
 
 # cuszpyの実行環境の起動方法 (こっちはなんでかわからんけど、/usr/local/lib/の方の共有ライブラリをリンクしようとするとバグる)
 ```
