@@ -49,7 +49,7 @@ def OneExp(tol,L1Size,L2Size,L3Size,L4Size,blockSize,request_sequence,analisisTi
         
         try : 
             one_req_start = time.time()
-            cli.getBlocks(tol=0.1,timestep=req[1],x=req[2],y=req[3],z=req[4],xEnd=req[2] + blockSize ,
+            cli.getBlocks(tol=tol,timestep=req[1],x=req[2],y=req[3],z=req[4],xEnd=req[2] + blockSize ,
                         yEnd=req[3] + blockSize, zEnd=req[4] + blockSize)
             print("the rest of request:{}".format(len(reqs)))
             one_req_end = time.time()
@@ -145,22 +145,25 @@ if __name__ == "__main__":
 
     print("start program")
     # tols = [0.3, 0.1 , 0.01, 0.001, 0] # 0 for no compress
-    tols = [0.1,0.01,0.001,0.0001]
+    tols = [0.01,0.001,0.0001]
+    tols = [0.001, 0.1,0.01,0.001,0.0001]
+
 
     # L1Sizes = [0,512, 1024, 2048, 4096, 4096*2 ,4096*4]
     L1Sizes = [0,512,512*2,512*4,512*8]
+    L1Sizes = [0,512,512*2]
 
     # L2Sizes = [0,512, 1024, 2048, 4096]
     L2Sizes = [0,512,1024]
-    # L2Sizes = [0,512]
+    L2Sizes = [0,512]
 
     #L3Sizes = [0,512, 1024, 2048, 4096]
     L3Sizes = [0,512,1024]
-    # L3Sizes = [0,512]
+    L3Sizes = [0,512]
 
     # L4Sizes = [0,512, 1024, 2048, 4096, 4096*2 ,4096*4]
     L4Sizes = [0,2048,2048*2,2048*4]
-    # L4Sizes = [2048]
+    L4Sizes = [0,2048,2048*2]
     # L4Sizes = [0,2048,2048*2,]
 
     # blockSizes = [64, 128, 256, 512]
@@ -221,6 +224,7 @@ if __name__ == "__main__":
                     with open(filename, 'rb') as file:
                         loaded_data = pickle.load(file)
                     reqs = loaded_data #reqMaker.randAndcontMixRequester(num_request,randomRatio)
+                    print(reqs)
                     print(f"loaded:{filename}")
                     
                     for L1Size in L1Sizes:
