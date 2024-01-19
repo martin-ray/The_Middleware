@@ -11,7 +11,7 @@ import queue
 class L3Prefetcher:
 
     # コンストラクタ
-    def __init__(self,L3Cache,L4Cache,L4Prefetcher,dataDim, userUsingGPU,userUsingStorage,blockOffset=256) -> None:
+    def __init__(self,L3Cache,L4Cache,L4Prefetcher,dataDim, userUsingGPU,userUsingStorage,blockOffset=256, targetTol=0.1) -> None:
 
         self.userUsingGPU = userUsingGPU
         self.userUsingStorage = userUsingStorage
@@ -23,10 +23,11 @@ class L3Prefetcher:
         self.blockOffset = blockOffset
         self.L3Cache = L3Cache
         self.L4Cache = L4Cache
+        self.TargetTol = 0.001 # targetTol
 
         # L3PrefetcherとL4Prefetcherで別々のもの持ってないと片方が一生使えなくなる->そんなことはないっぽいけど、別々に持ってた方がいい性能が出るんだよね。
         self.Slicer = TileDBSlicer(blockOffset=blockOffset)
-        self.compressor = compressor(self.L3Cache,device_id=0)
+        self.compressor = compressor(self.L3Cache,device_id=0) # 0 for a100 40G 1 for a100 80G
         self.L4Pref = L4Prefetcher
 
         # 取りに行く予定があるブロックのセット (重複を避けるために)
@@ -109,7 +110,7 @@ class L3Prefetcher:
         while not self.stop_thread:
             if (not self.prefetch_q_empty()) and (self.L3Cache.usedSizeInMiB < self.L3Cache.capacityInMiB) and (not self.userUsingGPU.is_locked() and (not self.userUsingStorage.is_locked())):
                 
-                print("L3 PREFETCHER IS READING FROM STORAGE")
+                # print("L3 PREFETCHER IS READING FROM STORAGE")
                 nextBlockId,distance = self.pop_front()
 
                 if distance > self.radius: # このdistanceを一回一回更新した方がいいのではないか？てか、これを優先度つきのキューで持ちたいんだが。
@@ -129,13 +130,13 @@ class L3Prefetcher:
 
                     d = self.Slicer.sliceData(nextBlockId)
                     self.L4Cache.put(nextBlockId,d) # write to L4 also (inclusive)
-                    tol = nextBlockId[0]
+                    tol = self.TargetTol
                     compressed = self.compressor.compress(d,tol)
                     self.L3Cache.put(nextBlockId,compressed)
                 else:
                     self.numL4Hits
                     print("L4 HIT! when L3 Prefetching from L4",nextBlockId,"distance:",distance)
-                    tol = nextBlockId[0]
+                    tol = self.TargetTol
                     compressed = self.compressor.compress(original,tol)
                     print("compressed size : {}".format(compressed.nbytes/1024/1024))
                     self.L3Cache.put(nextBlockId,compressed)
@@ -154,7 +155,7 @@ class L3Prefetcher:
 
     # 距離パラメータを追加すればいいと思います！
     def enque_neighbor_blocks(self,centerBlock,d):
-        tol = centerBlock[0] 
+        tol = self.TargetTol
         timestep = centerBlock[1]
         x = centerBlock[2]
         y = centerBlock[3]
@@ -183,7 +184,7 @@ class L3Prefetcher:
                         self.gonnaPrefetchSet.add((tol,timestep, x+dx, y+dy, z+dz))
 
     def enque_neighbor_blocks_to_front(self,centerBlock,d):
-        tol = centerBlock[0] 
+        tol = self.TargetTol
         timestep = centerBlock[1]
         x = centerBlock[2]
         y = centerBlock[3]
@@ -294,14 +295,13 @@ class L3Prefetcher:
 class L4Prefetcher:
 
     # コンストラクタ
-    def __init__(self,L4Cache,dataDim,blockSize,userUsingGPU,userUsingStorage):
+    def __init__(self,L4Cache,dataDim,blockSize,userUsingGPU,userUsingStorage,targetTol = 0.1):
         # user is coming flag
         self.userUsingGPU = userUsingGPU
         self.userUsingStorage = userUsingStorage
         self.L4Cache = L4Cache
         # self.Slicer = Slicer(blockOffset=blockSize)
         self.Slicer = TileDBSlicer(blockOffset=blockSize)
-        self.Tols = [0.0001,0.001,0.01,0.1,0.2,0.3,0.4,0.5]
         self.dataDim = dataDim
         self.maxTimestep = dataDim[0]
         self.maxX = dataDim[1]
@@ -314,6 +314,9 @@ class L4Prefetcher:
         self.stop_thread = False
         self.thread = None
         self.userPoint = None
+
+        # ここで、頑張って変えてください。
+        self.TargetTol = 0.001# targetTol
 
 
         # 計算式が間違っているか、そんな気がする。
@@ -392,11 +395,11 @@ class L4Prefetcher:
                 self.prefetchedSet.add(nextBlockId)
                 self.enque_neighbor_blocks(nextBlockId,distance)
             else:
-                print("L4: Queue empty?={}, Cache full?={}, Storage locked={}".format(
-                    self.prefetch_q_empty(),
-                    self.L4Cache.usedSizeInMiB >= self.L4Cache.capacityInMiB,
-                    self.userUsingStorage.is_locked()
-                ))
+                # print("L4: Queue empty?={}, Cache full?={}, Storage locked={}".format(
+                #     self.prefetch_q_empty(),
+                #     self.L4Cache.usedSizeInMiB >= self.L4Cache.capacityInMiB,
+                #     self.userUsingStorage.is_locked()
+                # ))
                 await asyncio.sleep(0.05)  # Sleep for 1 second, or adjust as needed
                 
                 
@@ -409,7 +412,7 @@ class L4Prefetcher:
 
     # TODO forループの順番。時間方向か、空間、どちらを優先的に取ってくるのか
     def enque_neighbor_blocks(self,centerBlock,d):
-        tol = centerBlock[0] 
+        tol = self.TargetTol# centerBlock[0] 
         timestep = centerBlock[1]
         x = centerBlock[2]
         y = centerBlock[3]
@@ -438,7 +441,7 @@ class L4Prefetcher:
                         self.gonnaPrefetchSet.add((tol,timestep, x+dx, y+dy, z+dz))
 
     def enque_neighbor_blocks_to_front(self,centerBlock,d):
-        tol = centerBlock[0] 
+        tol = self.TargetTol # centerBlock[0] 
         timestep = centerBlock[1]
         x = centerBlock[2]
         y = centerBlock[3]

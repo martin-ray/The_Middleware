@@ -11,7 +11,7 @@ import time
 class L2Prefetcher:
 
     #################### コンストラクタ ####################
-    def __init__(self,L2Cache,GPUmutex,maxTimestep=9,serverURL="http://172.20.2.253:8080",OnSwitch=True) -> None:
+    def __init__(self,L2Cache,GPUmutex,maxTimestep=63,serverURL="http://172.20.2.253:8080",OnSwitch=True,targetTol= 0.1) -> None:
         
         self.URL = serverURL
         self.maxTimestep = maxTimestep
@@ -28,6 +28,8 @@ class L2Prefetcher:
         self.thread = None
         self.userPoint = None
         self.radius = 10
+
+        self.targetTol = 0.001 # targetTol
 
         # GPUmutex
         self.GPUmutex = GPUmutex
@@ -66,11 +68,12 @@ class L2Prefetcher:
     async def fetchLoop(self):
         while not self.stop_thread:
             if (not self.prefetch_q_empty()) and (self.L2Cache.usedSizeInMiB < self.L2Cache.capacityInMiB):
-
+                print("L2 pref looping")
                 nextBlockId,d = self.pop_front()
                 compressed = self.Netif.send_req_urgent(nextBlockId)
                 self.L2Cache.put(nextBlockId,compressed)
                 self.enque_neighbor_blocks(nextBlockId,d) # ここ、あってるかもう一度確認してくれ。頼む。
+
             else:
                 await asyncio.sleep(0.01)  # Sleep for 1 second, or adjust as needed
 
@@ -88,7 +91,7 @@ class L2Prefetcher:
     ################## 置換、プリフェッチ系メソッド ############### 
     def enque_neighbor_blocks(self,centerBlock,d):
             print(centerBlock)
-            tol = centerBlock[0] 
+            tol = self.targetTol # centerBlock[0] 
             timestep = centerBlock[1]
             x = centerBlock[2]
             y = centerBlock[3]
@@ -118,7 +121,7 @@ class L2Prefetcher:
 
 
     def enque_neighbor_blocks_to_front(self,centerBlock,d):
-        tol = centerBlock[0] 
+        tol = self.targetTol # centerBlock[0] 
         timestep = centerBlock[1]
         x = centerBlock[2]
         y = centerBlock[3]
@@ -193,7 +196,7 @@ class L2Prefetcher:
 class L1Prefetcher:
 
     ################## コンストラクタ ##################
-    def __init__(self,L1Cache,L2Cache,GPUmutex,maxTimestep=9,offsetSize=256,OnSwitch=True):
+    def __init__(self,L1Cache,L2Cache,GPUmutex,maxTimestep=9,offsetSize=256,OnSwitch=True, TargetTol= 0.1):
 
 
         self.L1Cache = L1Cache
@@ -216,6 +219,8 @@ class L1Prefetcher:
         self.userPoint = None
 
         self.radius = self.getRadiusFromCapacity()
+
+        self.targetTol = 0.001 # TargetTol
 
         # GPUのmutex
         self.GPUmutex = GPUmutex
@@ -257,6 +262,8 @@ class L1Prefetcher:
 
         while not self.stop_thread:
             
+            print("L1 prefetcher is looping")
+
             if (not self.prefetch_q_empty()) and (self.L1Cache.usedSizeInMiB < self.L1Cache.capacityInMiB):
             
                 nextBlockId,distance = self.pop_front()
@@ -274,6 +281,8 @@ class L1Prefetcher:
 
                 self.enque_neighbor_blocks(nextBlockId,distance)
             else:
+                print(f"L1 prefethcer:prefetchQ empty? ={self.prefetch_q_empty()}, \
+                      cache has room ? ={self.L1Cache.usedSizeInMiB < self.L1Cache.capacityInMiB}")
                 await asyncio.sleep(0.1)  # Sleep for 0.1 second, or adjust as needed
 
     def thread_func(self):
@@ -285,7 +294,7 @@ class L1Prefetcher:
     ############# 更新系メソッド ##############
 
     def enque_neighbor_blocks(self,centerBlock,d):
-            tol = centerBlock[0] 
+            tol = self.targetTol # centerBlock[0] 
             timestep = centerBlock[1]
             x = centerBlock[2]
             y = centerBlock[3]
@@ -314,7 +323,7 @@ class L1Prefetcher:
                             self.gonnaPrefetchSet.add((tol,timestep, x+dx, y+dy, z+dz))
 
     def enque_neighbor_blocks_to_front(self,centerBlock,d):
-        tol = centerBlock[0] 
+        tol = self.targetTol # centerBlock[0] 
         timestep = centerBlock[1]
         x = centerBlock[2]
         y = centerBlock[3]
@@ -372,6 +381,7 @@ class L1Prefetcher:
 
     # キャッシュの要素をひとつづつ見て、半径に収まらない場合は、捨てる
     def evict(self,userPoint):
+        print("L1 prefetcher is evicting")
         for blockId in self.L1Cache.cache.keys():
             hops = self.calHops(userPoint,blockId)
             if (hops > self.radius) and self.L1Cache.isCacheFull():
