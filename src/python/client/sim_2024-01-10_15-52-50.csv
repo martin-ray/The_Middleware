@@ -1,0 +1,1 @@
+tol,L1Size,L2Size,L3Size,L4Size,blkSize,nReqs,reqPatrn,nL1Hits,nL2Hits,nL3Hits,nL4Hits,nAllMis,AvrLat,TDbArvLat,networkAvg,storageAvg,compAvg,decompAvg,sysOvrHdAvg,nL3PrefTimes,NL3PreL4HitTimes,nL3PrefFromStrg,nL4Pref,anlTime,netLat,q1,q3,median,iqr,lower_bound,upper_bound,std_dev,recycleRatio,maxDist,num_gpus
