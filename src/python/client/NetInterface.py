@@ -34,7 +34,7 @@ class NetIF:
         return
     
     
-    # 緊急なので、前に追加、というより、もうすぐにリクエスト送らないとだめじゃね？
+    # プリフェッチャのリクエストはこっちで処理される
     def send_req_urgent(self,BlockId):
 
         header = {
@@ -45,7 +45,6 @@ class NetIF:
             'y': str(BlockId[3]),
             'z': str(BlockId[4])
         }
-
         response = requests.get(self.URL,headers=header)
 
         return response.content
@@ -75,7 +74,7 @@ class NetIF:
             # print(f"Network Transfer Time: {transfer_time} ms")
         else:
             print("failed to get data network data!! FUCK")
-         
+        
         return response.content
     
 
@@ -92,7 +91,7 @@ class NetIF:
         return response
 
     
-    def reInitRequest(self,BlockOffset,L3Size,L4Size):
+    def reInitRequest(self,BlockOffset,L3Size,L4Size,targetTol):
         # # 送信キューのクリア
         # self.sendQ.clear()
 
@@ -102,13 +101,15 @@ class NetIF:
             'offset':str(BlockOffset),
             'L3' : str(L3Size),
             'L4' : str(L4Size),
+            'targetTol' : str(targetTol),
             'Policy': 'LRU',
             'FileName':'test'
         }
+
         response = requests.get(self.URL,headers=header)
         return response.status_code
     
-    def firstContact(self,BlockOffset,L3Size,L4Size):
+    def firstContact(self,BlockOffset,L3Size,L4Size,targetTol):
         # # 送信キューのクリア
         # self.sendQ.clear()
 
@@ -118,6 +119,7 @@ class NetIF:
             'offset':str(BlockOffset),
             'L3Size' : str(L3Size),
             'L4Size' : str(L4Size),
+            'targetTol' : str(targetTol),
             'Policy': 'LRU',
             'FileName':'test'
         }
