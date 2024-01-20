@@ -17,14 +17,14 @@ class MyRequestHandler(http.server.SimpleHTTPRequestHandler):
         # Access the custom variable in GET request
         msgType = (self.headers.get('type'))
         
-        # print(self.headers)
         if msgType == 'init' :
             blockOffset = int(self.headers.get('offset'))
             L3Size = int(self.headers.get('L3Size'))
             L4Size = int(self.headers.get('L4Size'))
             Policy = self.headers.get('Policy')
+            targetTol = self.headers.get('targetTol')
             FileName = self.headers.get('FileName') # FileName to save the file in
-            self.HttpAPI.reInit(blockSize=blockOffset,L3CacheSize=L3Size,L4CacheSize=L4Size,policy=Policy)
+            self.HttpAPI.reInit(blockSize=blockOffset,L3CacheSize=L3Size,L4CacheSize=L4Size,policy=Policy,targetTol= targetTol)
             self.send_response(200)
             self.end_headers()
             # TODO データの範囲を送信
@@ -61,12 +61,11 @@ class MyRequestHandler(http.server.SimpleHTTPRequestHandler):
             blockId = self.HttpAPI.adjustBlockId(blockId)
             compressed = self.HttpAPI.getUsr(blockId)
 
-            # timestamp_ms = int(time.time() * 1000)
-            timestamp_ns = int(time.time_ns())
+            timestamp_ms = int(time.time() * 1000)
 
             # Add the timestamp to the response header
             self.send_response(200)
-            self.send_header('X-Network-Time', str(timestamp_ns)) 
+            self.send_header('X-Network-Time', str(timestamp_ms)) 
             self.end_headers()
             self.wfile.write(compressed)
 

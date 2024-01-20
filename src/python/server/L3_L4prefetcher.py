@@ -81,12 +81,13 @@ class L3Prefetcher:
         self.stop_thread = True
         # return {"numPrefetch":self.numPrefetches,"numL4Hits":self.numL4Hits}
 
-    def InitializeSetting(self,blockOffset):
+    def InitializeSetting(self,blockOffset,targetTol):
         self.Slicer.changeBlockSize(blockOffset)
         self.prefetchedSet = set()
         self.gonnaPrefetchSet = set()
         self.prefetch_q = deque()
         self.blockOffset = blockOffset
+        self.TargetTol = targetTol
         self.radius = self.getRadiusFromCapacity()*self.estimatedCompratio
 
     def changeBlockOffset(self,blockOffset):
@@ -365,11 +366,12 @@ class L4Prefetcher:
         self.stop_thread = True
         # return {"numPrefetch":self.numPrefetches}
 
-    def InitializeSetting(self,blockOffset):
+    def InitializeSetting(self,blockOffset,targetTol):
         self.Slicer.changeBlockSize(blockOffset)
         self.prefetchedSet = set()
         self.gonnaPrefetchSet = set()
         self.prefetch_q = deque()
+        self.TargetTol = targetTol
         self.blockOffset = blockOffset
         self.radius = 10 #self.getRadiusFromCapacity()
 

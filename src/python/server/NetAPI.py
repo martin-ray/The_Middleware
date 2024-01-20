@@ -43,12 +43,14 @@ class HttpAPI:
         self.CompTime = []
         self.L3PrefStats = None
         self.L4PrefStats = None
+        self.targetTol = targetTol
 
         # OSのキャッシュクリア用のクライアント
         self.CacheClearClient = CacheClearClient()
 
-    def reInit(self,L3CacheSize,L4CacheSize,blockSize,policy='LRU'):
+    def reInit(self,L3CacheSize,L4CacheSize,blockSize,targetTol= 0.1,policy='LRU'):
         self.blockSize = blockSize
+        self.targetTol = targetTol
 
         # 別スレッドで走っているプリフェッチを停止
         # RuntimeError: threads can only be started onceというエラーをいただきましたので、
@@ -100,8 +102,8 @@ class HttpAPI:
         self.L4PrefTimes = None
         
         # 別スレッドで動いているぷりふぇっちゃーの設定を変更
-        self.L3Pref.InitializeSetting(self.blockSize)
-        self.L4Pref.InitializeSetting(self.blockSize)
+        self.L3Pref.InitializeSetting(self.blockSize,self.targetTol)
+        self.L4Pref.InitializeSetting(self.blockSize,self.targetTol)
 
         # 情報を出力
         print("restarting the system with the following setting:\n")
