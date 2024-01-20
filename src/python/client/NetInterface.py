@@ -17,6 +17,7 @@ class NetIF:
 
         # for stats
         self.networkLatencys = []
+        self.rtt = [] # round trip time
 
     
     def send_user_point(self,BlockId):
@@ -71,6 +72,7 @@ class NetIF:
         if network_time != -1:
             transfer_time = end_time - network_time
             self.networkLatencys.append(transfer_time/1000)
+            self.rtt.append((end_time - start_time) / 100)
             # print(f"Network Transfer Time: {transfer_time} ms")
         else:
             print("failed to get data network data!! FUCK")
@@ -87,7 +89,9 @@ class NetIF:
 
         response = requests.get(self.URL, headers=header).json()
         response["networkLatencys"] = self.networkLatencys
+        response["rtt"] = self.rtt
         self.networkLatencys = []
+        self.rtt = []
         return response
 
     

@@ -88,6 +88,7 @@ def OneExp(tol,L1Size,L2Size,L3Size,L4Size,blockSize,request_sequence,analisisTi
     stats["compAvg"] = getAvrExcludingZero(stats["CompTime"])[0]
     stats["networkAvg"] = getAvrExcludingZero(stats["networkLatencys"])[0]
     stats["decompAvg"] = getAvrExcludingZero(stats["DecompElapsed"])[0]
+    stats["rttAvg"] = getAvrExcludingZero(stats["rtt"])
     stats["systemOverhead"] = None
     stats["systemOverheadAvg"] = -1
 
@@ -99,7 +100,7 @@ def OneExp(tol,L1Size,L2Size,L3Size,L4Size,blockSize,request_sequence,analisisTi
 
     except Exception as e:
         print(e)
-        stats["systemOverheadAvg"] = -1 # stats["PropAverageLatency"] - (stats["storageAvg"] +  stats["compAvg"] + stats["networkAvg"] + stats["decompAvg"])
+        stats["systemOverheadAvg"] = stats["PropAverageLatency"] - (stats["storageAvg"] +  stats["compAvg"] + stats["networkAvg"] + stats["decompAvg"])
 
     stats["numL3PrefFromStorage"] = stats["NumL3Prefetch"] - stats["NumL3PrefetchL4Hit"]
 
@@ -184,7 +185,7 @@ if __name__ == "__main__":
     header = ['tol','L1Size', 'L2Size', 'L3Size', 'L4Size', 'blkSize',
                'nReqs', 'reqPatrn', 'nL1Hits', 
                'nL2Hits', 'nL3Hits', 'nL4Hits','nAllMis',
-               'AvrLat','TDbArvLat',
+               'AvrLat','TDbArvLat','rtt',
                'networkAvg','storageAvg','compAvg',
                'decompAvg','sysOvrHdAvg','nL3PrefTimes','NL3PreL4HitTimes',
                'nL3PrefFromStrg',
@@ -249,6 +250,7 @@ if __name__ == "__main__":
                                                         stats["AllMiss"],
                                                         round(stats["PropAverageLatency"],round_precision),
                                                         round(stats["TiledbAverageLatency"],round_precision),
+                                                        round(stats["rttAvg"],round_precision),
                                                         round(stats["networkAvg"],round_precision),
                                                         round(stats["storageAvg"],round_precision),
                                                         round(stats["compAvg"],round_precision),
