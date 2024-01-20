@@ -3,6 +3,7 @@ import socketserver
 import threading
 import json
 from NetAPI import HttpAPI
+import time
 
 # Define the request handler class
 class MyRequestHandler(http.server.SimpleHTTPRequestHandler):
@@ -29,6 +30,7 @@ class MyRequestHandler(http.server.SimpleHTTPRequestHandler):
             # TODO データの範囲を送信
 
         elif msgType == 'BlockReq':
+            print("Got request from prefetcher")
             tol = float(self.headers.get('tol'))
             timestep = int(self.headers.get('timestep'))
             x = int(self.headers.get('x'))
@@ -37,9 +39,16 @@ class MyRequestHandler(http.server.SimpleHTTPRequestHandler):
             blockId = (tol,timestep,x,y,z)
             blockId = self.HttpAPI.adjustBlockId(blockId)
             compressed = self.HttpAPI.get(blockId)
+
+            # Capture the current timestamp in milliseconds
+            timestamp_ms = int(time.time() * 1000)
+
+            # Add the timestamp to the response header
             self.send_response(200)
+            self.send_header('X-Network-Time', str(timestamp_ms)) 
             self.end_headers()
             self.wfile.write(compressed)
+            # print(f"Sent back the block. size is {compressed.nbytes}")
 
         # cache hit率を測定するために必要な部分
         elif msgType == 'BlockReqUsr':
@@ -51,7 +60,13 @@ class MyRequestHandler(http.server.SimpleHTTPRequestHandler):
             blockId = (tol,timestep,x,y,z)
             blockId = self.HttpAPI.adjustBlockId(blockId)
             compressed = self.HttpAPI.getUsr(blockId)
+
+            # timestamp_ms = int(time.time() * 1000)
+            timestamp_ns = int(time.time_ns())
+
+            # Add the timestamp to the response header
             self.send_response(200)
+            self.send_header('X-Network-Time', str(timestamp_ns)) 
             self.end_headers()
             self.wfile.write(compressed)
 
@@ -82,7 +97,6 @@ class MyRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
 
         elif msgType == 'getStats':
-
             totalReqs = self.HttpAPI.numReqs
             nL3Hit = self.HttpAPI.numL3Hit
             nL4Hit = self.HttpAPI.numL4Hit
