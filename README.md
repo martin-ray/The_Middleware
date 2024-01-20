@@ -291,22 +291,31 @@ sudo tc qdisc add dev eno1 root handle 1:0 netem delay 100ms
 sudo tc qdisc del dev eno1 root
 ```
 
+# tsharkを使てパケットダンプをする方法。
+```
+sudo tshark -i eno1 -Y 'tcp.port==8080'
+```
+これで、eno1のポート8080に来るデータの解析ができます。
+
+
 ## 1/19のTODO
 - [x] ネットワークのレイテンシーを変えてやってみる
-- [ ] tolを変化させて測定。server_sideのL3Prefのtolが0.1でハードコーディングされているので、一回一回リセットして動かしてください。面倒くさいですが。
-- [ ] 余裕があったら、プログラムのリファクタリングをしてください。特に、L1周り。tolのハードコーディングも、クライアントから指定できたらいいよね。
-- [ ] 今日、クライアントサイド直せたら最高だよね。マジで！
 
 
 ## 1/20のTODO
+- [x] MTUとwindowサイズについて、勉強。cubicってアルゴリズムでMTUのサイズを変えていることを確認。
+- [x] TCPダンプする。どうやってやるんだろうなーーー。これは、証明になるから。で、
+- [x] ネットワークレイテンシーを大きくした時に、なんで、あんなに遅くなるのか？MTU, Window Sizeで説明ができるように、TCP dumpをする。これ、どうやってやるんだろうなーー。説明はできる。スリーウェイハンドシェイクに
+totalLatency = round_trip_time (Network) + decompression_time + OverHead
+round_trip_time = 3way_handshake + storage_read + compress + Network_transfer 
+ = 0.2 ( 実際に、リクエストがサーバに届くまで ) + 0.1 + 0.1 + Network_transfer
+
 - [ ] SDRベンチを使って、MGARD, cuSZp, FP16の強さを調べる。データサイズは64MiBと、128MiB, 256MiB, 512MiB, 1024MiBでいいかな。
+
+## 1/21のTODO
 - [ ] クライアントコードのリファクタリング。特にL1_L2周り。んで、取ってくる順番を変える。
 - [ ] 時間方向に取ってくるアクセスパターンに変更する。これもよろしく頼む。
 - [ ] tol、ネットワークレイテンシーを変更して、もう一回測定。
-- [ ] ネットワークレイテンシーを大きくした時に、なんで、あんなに遅くなるのか？MTU, Window Sizeで説明ができるように、TCP dumpをする。これ、どうやってやるんだろうなーー。
-- [ ] TCPダンプする。どうやってやるんだろうなーーー。これは、証明になるから。で、MTUとwindowサイズについて、
-
-## 1/21のTODO
 - [ ] 修論のまとめにかかる。とりあえず、3章と、4章、追加する。
 
 ## 1/22のTODO
