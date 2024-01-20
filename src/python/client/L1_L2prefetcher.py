@@ -29,7 +29,7 @@ class L2Prefetcher:
         self.userPoint = None
         self.radius = 10
 
-        self.targetTol = 0.001 # targetTol
+        self.targetTol = targetTol
 
         # GPUmutex
         self.GPUmutex = GPUmutex
@@ -220,7 +220,7 @@ class L1Prefetcher:
 
         self.radius = self.getRadiusFromCapacity()
 
-        self.targetTol = 0.001 # TargetTol
+        self.targetTol = TargetTol
 
         # GPUのmutex
         self.GPUmutex = GPUmutex

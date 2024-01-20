@@ -35,7 +35,7 @@ def OneExp(tol,L1Size,L2Size,L3Size,L4Size,blockSize,request_sequence,analisisTi
     # print(reqs)
     numReqs = len(reqs)
     cli = ClientAPI(L1Size=L1Size,L2Size=L2Size,L3Size=L3Size,L4Size=L4Size,
-                    blockSize=blockSize,serverURL=serverURL)
+                    blockSize=blockSize,serverURL=serverURL,targetTol=tol)
     
     print("creating tiledb client")
     tiledbCli = TiledbConnector(L1Size+L2Size)
@@ -147,6 +147,7 @@ if __name__ == "__main__":
     # tols = [0.3, 0.1 , 0.01, 0.001, 0] # 0 for no compress
     tols = [0.01,0.001,0.0001]
     tols = [0.001, 0.1,0.01,0.001,0.0001]
+    tols = [0.1]
 
 
     # L1Sizes = [0,512, 1024, 2048, 4096, 4096*2 ,4096*4]

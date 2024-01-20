@@ -12,7 +12,7 @@ import concurrent.futures
 class ClientAPI:
     def __init__(self,L1Size, L2Size, L3Size, L4Size,blockSize=256,
                  L1PrefOn=True,L2PrefOn=True,L3PrefOn=True,L4PrefOn=True,
-                 serverURL="http://172.20.2.254:8080"): 
+                 serverURL="http://172.20.2.254:8080",targetTol=0.1): 
 
         self.serverURL = serverURL
         self.L1CacheSize = L1Size
@@ -33,7 +33,7 @@ class ClientAPI:
         self.netIF = NetIF(L2Cache=self.L2Cache,serverURL=self.serverURL)
 
         # 初期コンタクト
-        response_code = self.netIF.firstContact(BlockOffset=blockSize,L3Size=L3Size,L4Size=L4Size)
+        response_code = self.netIF.firstContact(BlockOffset=blockSize,L3Size=L3Size,L4Size=L4Size,targetTol=targetTol)
         if (response_code != 200):
             print("initialization failed in server.")
             exit(0)
@@ -41,10 +41,10 @@ class ClientAPI:
             print("Initalization Success")
 
         # fetchLoop threadはconstructorの中で起動
-        self.L2pref = L2Prefetcher(L2Cache=self.L2Cache,GPUmutex=self.GPUmutex,serverURL=self.serverURL) 
+        self.L2pref = L2Prefetcher(L2Cache=self.L2Cache,GPUmutex=self.GPUmutex,serverURL=self.serverURL,targetTol=targetTol) 
 
         # fetchLoop threadはconstructorの中で起動。L1prefは自分でdecompressorのインスタンスを持っている
-        self.L1pref = L1Prefetcher(L1Cache=self.L1Cache,L2Cache=self.L2Cache,offsetSize=self.blockOffset,GPUmutex=self.GPUmutex)
+        self.L1pref = L1Prefetcher(L1Cache=self.L1Cache,L2Cache=self.L2Cache,offsetSize=self.blockOffset,GPUmutex=self.GPUmutex,TargetTol=targetTol)
         self.recomposer = Recomposer(blockOffset=self.blockOffset)
 
         # スレッド数
@@ -157,14 +157,14 @@ class ClientAPI:
 
 
     def getBlocks(self, tol, timestep, x, y, z, xEnd, yEnd, zEnd):
+
         req = (x,xEnd,y,yEnd,z,zEnd)
-        # print("request:",req)
         BlockIds = self.Block2BlockIds(tol, timestep, x, y, z, xEnd, yEnd, zEnd)
-        # print("to ",BlockIds)
         BlockAndData = {}
         threads = []
 
         for blockId in BlockIds:
+            
             L1data = self.L1Cache.get(blockId)
 
             # inform user point to all prefetchers
