@@ -2,7 +2,6 @@ import numpy as np
 from decompressor import Decompressor
 from NetInterface import NetIF
 from L1_L2prefetcher import L2Prefetcher,L1Prefetcher
-from L1_L2Cache import LRU_cache
 from L1_L2Cache import spatial_cache
 from recomposer import Recomposer
 import threading
