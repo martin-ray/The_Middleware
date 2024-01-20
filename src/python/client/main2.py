@@ -88,7 +88,7 @@ def OneExp(tol,L1Size,L2Size,L3Size,L4Size,blockSize,request_sequence,analisisTi
     stats["compAvg"] = getAvrExcludingZero(stats["CompTime"])[0]
     stats["networkAvg"] = getAvrExcludingZero(stats["networkLatencys"])[0]
     stats["decompAvg"] = getAvrExcludingZero(stats["DecompElapsed"])[0]
-    stats["rttAvg"] = getAvrExcludingZero(stats["rtt"])
+    stats["rttAvg"] = getAvrExcludingZero(stats["rtt"])[0]
     stats["systemOverhead"] = None
     stats["systemOverheadAvg"] = -1
 
@@ -148,7 +148,7 @@ if __name__ == "__main__":
     # tols = [0.3, 0.1 , 0.01, 0.001, 0] # 0 for no compress
     tols = [0.01,0.001,0.0001]
     tols = [0.001, 0.1,0.01,0.001,0.0001]
-    tols = [0.1]
+    tols = [0.0001]
 
 
     # L1Sizes = [0,512, 1024, 2048, 4096, 4096*2 ,4096*4]
