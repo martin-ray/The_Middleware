@@ -23,7 +23,7 @@ class L3Prefetcher:
         self.blockOffset = blockOffset
         self.L3Cache = L3Cache
         self.L4Cache = L4Cache
-        self.TargetTol = 0.001 # targetTol
+        self.TargetTol = targetTol
 
         # L3PrefetcherとL4Prefetcherで別々のもの持ってないと片方が一生使えなくなる->そんなことはないっぽいけど、別々に持ってた方がいい性能が出るんだよね。
         self.Slicer = TileDBSlicer(blockOffset=blockOffset)
@@ -316,7 +316,7 @@ class L4Prefetcher:
         self.userPoint = None
 
         # ここで、頑張って変えてください。
-        self.TargetTol = 0.001# targetTol
+        self.TargetTol = targetTol
 
 
         # 計算式が間違っているか、そんな気がする。

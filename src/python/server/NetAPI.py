@@ -12,10 +12,11 @@ import threading
 from flag import Flag
 from flag import LooseFlag
 import time
+from file_cache_clear_client import CacheClearClient
 
 
 class HttpAPI:
-    def __init__(self,L3CacheSize=4096*8,L4CacheSize=0,blockSize=256,serverIp="http://localhost:8080"):
+    def __init__(self,L3CacheSize=4096*8,L4CacheSize=0,blockSize=256,serverIp="http://localhost:8080",targetTol = 0.1):
         # user is coming flag to control the GPU and storage resource
         self.userUsingGPU = LooseFlag()
         self.userUsingStorage = LooseFlag()
@@ -24,11 +25,12 @@ class HttpAPI:
         self.DataDim = self.Slicer.getDataDim()
         self.L3Cache = spatial_cache(L3CacheSize,offsetSize=blockSize)
         self.L4Cache = spatial_cache(L4CacheSize,offsetSize=blockSize)
-        self.compressor = compressor(self.L3Cache)
-        self.L4Pref = L4Prefetcher(self.L4Cache,dataDim=self.DataDim,blockSize=blockSize,userUsingGPU=self.userUsingGPU,userUsingStorage=self.userUsingStorage)
+        self.compressor = compressor(self.L3Cache,device_id=1) # 1 is 80G
+        self.compressor2 = compressor(self.L3Cache,device_id=0) # 0 is 40G for pref
+        self.L4Pref = L4Prefetcher(self.L4Cache,dataDim=self.DataDim,blockSize=blockSize,userUsingGPU=self.userUsingGPU,userUsingStorage=self.userUsingStorage,targetTol=targetTol)
         self.L3Pref = L3Prefetcher(self.L3Cache, self.L4Cache,dataDim=self.DataDim,
                                    L4Prefetcher=self.L4Pref,blockOffset=blockSize,
-                                   userUsingGPU=self.userUsingGPU,userUsingStorage=self.userUsingStorage)
+                                   userUsingGPU=self.userUsingGPU,userUsingStorage=self.userUsingStorage,targetTol=targetTol)
         self.sendQ = deque() # いる？
         self.blockSize = blockSize
 
@@ -39,7 +41,11 @@ class HttpAPI:
         self.numL3L4Miss = 0 # numReqs == numL3Hit + numL4Hit + numL3L4Missって計算式になります
         self.StorageReadTime = []
         self.CompTime = []
+        self.L3PrefStats = None
+        self.L4PrefStats = None
 
+        # OSのキャッシュクリア用のクライアント
+        self.CacheClearClient = CacheClearClient()
 
     def reInit(self,L3CacheSize,L4CacheSize,blockSize,policy='LRU'):
         self.blockSize = blockSize
@@ -47,11 +53,22 @@ class HttpAPI:
         # 別スレッドで走っているプリフェッチを停止
         # RuntimeError: threads can only be started onceというエラーをいただきましたので、
         # 止めずにやる / 新しくスレッドを作るのにたくですね。
+        # stopメソッドは、プリフェッチした回数を返す。スタッツのために
         print("stopping the prefetch thread")
         self.L3Pref.stop()
         self.L4Pref.stop()
+
+        # OSのbuff/cacheをクリア
+        print("sending OS cache clear request")
+        self.CacheClearClient = CacheClearClient()
+        self.CacheClearClient.connect()
+        self.CacheClearClient.send_command()
+        self.CacheClearClient.close()
+
         print("waiting for the threads to stop...")
         time.sleep(5)
+
+
 
         # プリフェッチのサイズも変更
         self.L3Cache.changeBlockoffset(self.blockSize)
@@ -79,6 +96,8 @@ class HttpAPI:
         self.numL3L4Miss = 0
         self.StorageReadTime = []
         self.CompTime = []
+        self.L3PrefTimes = None
+        self.L4PrefTimes = None
         
         # 別スレッドで動いているぷりふぇっちゃーの設定を変更
         self.L3Pref.InitializeSetting(self.blockSize)
@@ -122,14 +141,14 @@ class HttpAPI:
                 
                 # ここ、L3とL4キャッシュに登録しなくても大丈夫か？まあいいか。
                 start_reading_time = time.time()
-                self.userUsingStorage.set_lock()
+                # self.userUsingStorage.set_lock()
                 original = self.Slicer.sliceData(blockId)
-                self.userUsingStorage.unlock()
+                # self.userUsingStorage.unlock()
                 end_reading_time = time.time()
                 
-                self.userUsingGPU.set_lock()
+                # self.userUsingGPU.set_lock()
                 compressed = self.compressor.compress(original,tol)
-                self.userUsingGPU.unlock()
+                # self.userUsingGPU.unlock()
                 end_compression_time = time.time()
 
                 # for stats
@@ -177,6 +196,7 @@ class HttpAPI:
 
     # これは、L2やL1からのリクエストポイントですね。上のやつほど緊急度は高くありません。はい。
     def get(self,blockId):
+        print("request from prefetcher")
         tol = blockId[0]
         L3data = self.L3Cache.get(blockId)
         if L3data is None:
@@ -185,7 +205,7 @@ class HttpAPI:
                 self.L4Pref.InformL3MissAndL4Miss(blockId)# プリフェッチポリシーの変更はプリふぇっちゃー側で変更してください
                 self.L3Pref.InformL3MissAndL4Miss(blockId)
                 original = self.Slicer.sliceData(blockId)
-                compressed = self.compressor.compress(original,tol)
+                compressed = self.compressor2.compress(original,tol)
                 return compressed
             else:
                 self.L4Pref.InformL3MissAndL4Hit(blockId)
