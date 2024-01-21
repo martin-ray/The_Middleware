@@ -2,7 +2,7 @@ import h5py
 import numpy as np
 import _mgard as mgard
 import time
-
+import math
 import numpy as np
 
 def psnr(original_data, decompressed_data):
@@ -94,6 +94,23 @@ file_paths = [
             "SDRBENCH-SCALE_98x1200x1200/V-98x1200x1200.f32",
             "JHTDB"
         ]
+
+data2dims = {
+
+    "Hurricate_ISABEL/100x500x500/CLOUDf48.bin.f32":[100,500,500],
+    "Hurricate_ISABEL/100x500x500/PRECIPf48.bin.f32":[100,500,500],
+    "Hurricate_ISABEL/100x500x500/QCLOUDf48.bin.f32":[100,500,500],
+    "Hurricate_ISABEL/100x500x500/Vf48.bin.f32":[100,500,500],
+    "NYX/SDRBENCH-EXASKY-NYX-512x512x512/dark_matter_density.f32":[512,512,512],
+    "SDRBENCH-SCALE_98x1200x1200/PRES-98x1200x1200.f32":[98,1200,1200],
+    "SDRBENCH-SCALE_98x1200x1200/RH-98x1200x1200.f32":[98,1200,1200],
+    "SDRBENCH-SCALE_98x1200x1200/QS-98x1200x1200.f32":[98,1200,1200],
+    "SDRBENCH-SCALE_98x1200x1200/QR-98x1200x1200.f32":[98,1200,1200],
+    "SDRBENCH-SCALE_98x1200x1200/V-98x1200x1200.f32":[98,1200,1200],
+    "SDRBENCH-SCALE_98x1200x1200/V-98x1200x1200.f32":[98,1200,1200],
+    "JHTDB": None
+}
+
 # create a file to write the results
 import csv
 from datetime import datetime
@@ -133,10 +150,15 @@ for file_path in file_paths:
         else:
             with open(prefix + file_path, "rb") as file:
                 original = np.fromfile(file, dtype=np.float32)
-                if original.shape[0] < elements:
+                dims = data2dims[file_path]
+                original = original.reshape(dims[0],dims[1],dims[2])
+                x_offset = dims[0]
+                y_mutl_z_offset = int(elements/x_offset)
+                y_z_offset = int(math.sqrt(y_mutl_z_offset))
+                if y_z_offset > dims[1] :
                     continue
                 else:
-                    original = original[:elements]
+                    original = original[0:x_offset,0:y_z_offset,0:y_z_offset]
             
         configGPU = mgard.Config()
         configGPU.dev_type = mgard.DeviceType.CUDA
