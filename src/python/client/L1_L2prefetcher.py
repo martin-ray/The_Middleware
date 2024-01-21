@@ -42,7 +42,7 @@ class L2Prefetcher:
             self.thread = threading.Thread(target=self.thread_func)
             self.thread.start()
 
-    ################## 初期化系メソッド ####################
+    ### 初期化系メソッド ###
     def startPrefetching(self):
         self.stop_thread = False
         if self.L2Cache.capacityInMiB > 0:
@@ -194,6 +194,9 @@ class L2Prefetcher:
     def cal_move_vector_and_prefetch(self,numSeq=3,fetch_nums = 5): # numSeq : ラストnumSeq個のnumSeqから、方向を算出
         
         latest_sequences = self.RequestSequence[-numSeq:] # 中身は、(tol,x,y,z) のtuple
+        if len(latest_sequences <= 2):
+            return # バグるので
+        
         v1 = np.subtract(latest_sequences[2] - latest_sequences[1])
         v0 = np.subtract(latest_sequences[1] - latest_sequences[0])
 
@@ -384,6 +387,7 @@ class L1Prefetcher:
     def InformUserPoint(self,blockId):
         self.RequestSequence.append(blockId)
         self.userPoint = blockId
+        self.cal_move_vector_and_prefetch()
         self.update_cache(blockId)
         self.updatePrefetchQ(blockId)
     
@@ -429,6 +433,9 @@ class L1Prefetcher:
     def cal_move_vector_and_prefetch(self,numSeq=3,fetch_nums = 5): # numSeq : ラストnumSeq個のnumSeqから、方向を算出
         
         latest_sequences = self.RequestSequence[-numSeq:] # 中身は、(tol,x,y,z) のtuple
+        if len(latest_sequences <= 2):
+            return # バグるので
+        
         v1 = np.subtract(latest_sequences[2] - latest_sequences[1])
         v0 = np.subtract(latest_sequences[1] - latest_sequences[0])
 
