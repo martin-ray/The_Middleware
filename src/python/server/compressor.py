@@ -5,7 +5,7 @@ from collections import deque
 # コンプレッサーの扱い方について今迷っています。i/oみたいに、一回一回、お願いするか、キューみたいなのを用意しておいて、
 # 別スレッドで動いているコンプレッサーが自分でキューからデータを取ってくるか。どっちにするか。
 class compressor:
-    def __init__(self,L3Cache,device = "GPU") -> None:
+    def __init__(self,L3Cache,device = "GPU",device_id=0) -> None:
         self.L3Cache = L3Cache
         self.originalQ = deque()
         
@@ -15,6 +15,10 @@ class compressor:
             self.config.dev_type = mgard.DeviceType.OMP
         elif device == "SERIAL":
             self.config.dev_type = mgard.DeviceType.SERIAL
+        # devidでGPUのindexを指定すれば使える
+            
+        self.config.dev_id = device_id
+            
     
     def compress_req(self,blockId,original):
         tol = blockId[0]
@@ -22,6 +26,7 @@ class compressor:
         self.L3Cache.put(blockId,compressed)
         return
     
+    # urgent_compress requestって感じだね。これを使うのは、
     def compress(self,original,tol):
         compressed = mgard.compress(original, tol, 0, mgard.ErrorBoundType.REL, self.config)
         return compressed

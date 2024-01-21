@@ -254,16 +254,14 @@ class L3Prefetcher:
 
     def InformUserPoint(self,blockId):
         print(f"L3 : user is at{blockId}")
-        start = time.time()
-        self.evict(blockId)
+        self.update_cache(blockId)
         self.updatePrefetchQ(blockId)
-        end = time.time()
-        print("L3 : time to update cache info {}".format(
-            end - start
-        ))
+        # print("L3 : time to update cache info {}".format(
+        #     end - start
+        # ))
 
     # ここ結構時間かかりそうだけど、大丈夫？
-    def evict(self,userPoint):
+    def update_cache(self,userPoint):
         # キャッシュの要素を取り出していく。
         for blockId in self.L3Cache.cache.keys():
             hops = self.calHops(userPoint,blockId)
@@ -282,12 +280,12 @@ class L3Prefetcher:
         loop.run_until_complete(self.fetchLoop())          
 
     def clearQueue(self):
-        start_ms = time.time()
+
         while not self.prefetch_q_empty():
             blockId = self.pop_front()
             self.gonnaPrefetchSet.discard(blockId)
-        end_ms = time.time()
-        print("time to clear queue = ",end_ms - start_ms)
+        
+        # print("time to clear queue = ",end_ms - start_ms)
 
 
 # TODO 継承
@@ -486,8 +484,6 @@ class L4Prefetcher:
         # self.prefetch_q.append((blockId,0)) # いや、これはもうすでに取ってあるから今から取りに行ったってもう意味ないのよ。
         # self.gonnaPrefetchSet.add(blockId)
         self.prefetchedSet.add(blockId)
-        # self.clearQueue() # ここで結構時間食ってる説あるよね。
-        # self.enque_neighbor_blocks_to_front(blockId,0)
 
     def InformL4MissByPref(self,blockId):
         print("L3 Prefetcher missed L4 and brought from disk:{}\n",blockId)
@@ -524,6 +520,7 @@ class L4Prefetcher:
     def enqueue_blockId(self,blockId):
         self.prefetch_q.append(blockId)
 
+
     def enqueue_first_blockId(self,blockId = (0.1, 0, 0 ,0 ,0 ),d=0):
         self.prefetch_q.append((blockId,d))
         self.gonnaPrefetchSet.add(blockId)
@@ -531,15 +528,10 @@ class L4Prefetcher:
     def InformUserPoint(self,blockId):
         print(f"L4 : user is at{blockId}")
         self.userPoint = blockId
-        start = time.time()
-        self.evict(blockId)
+        self.update_cache(blockId)
         self.updatePrefetchQ(blockId)
-        end = time.time()
-        print(f"L4 : time to update cache info = {end - start}")
 
-    # ここ結構時間かかりそうだけど、大丈夫？
-    def evict(self,userPoint):
-        # キャッシュの要素を取り出していく。
+    def update_cache(self,userPoint):
         for blockId,blockValue in self.L4Cache.cache.items():
             hops = self.calHops(userPoint,blockId)
             if (hops > self.radius) and self.L4Cache.isCacheFull():
@@ -547,9 +539,9 @@ class L4Prefetcher:
                 self.L4Cache.evict_a_block(blockId)
                 self.prefetchedSet.discard(blockId)
 
-    # ユーザの位置が知らされるたびにこれを実行する。内容は簡単。
+    # ユーザの位置が知らされるたびにこれを実行。内容は簡単。
     def updatePrefetchQ(self,userPoint):
-        self.enque_neighbor_blocks_to_front(userPoint,0) # でいんじゃね？って思った。
+        self.enque_neighbor_blocks_to_front(userPoint,0)
 
 
 

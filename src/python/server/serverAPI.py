@@ -198,8 +198,11 @@ class HttpAPI:
 
     # これは、L2やL1からのリクエストポイントですね。上のやつほど緊急度は高くありません。はい。
     def get(self,blockId):
-        print("request from prefetcher")
+
+        # print("request from prefetcher")
+        
         tol = blockId[0]
+        
         L3data = self.L3Cache.get(blockId)
         if L3data is None:
             L4data = self.L4Cache.get(blockId)
