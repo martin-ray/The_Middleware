@@ -64,6 +64,7 @@ class Slicer:
 
 class TileDBSlicer:
     def __init__(self,blockOffset=256,cacheSize=0,filename="/scratch/aoyagir/tiledb_data/array64") -> None:
+        
         # Create a TileDB config
         self.config = tiledb.Config()
         self.config["sm.tile_cache_size"] = cacheSize
@@ -76,8 +77,8 @@ class TileDBSlicer:
         self.zMax = 1024
         self.shape = [self.timesteps,self.xMax,self.yMax,self.zMax]
 
-        self.getDim()
-        self.printDataInfo()
+        # self.getDim()
+        # self.printDataInfo()
 
     def getDim(self):
         with tiledb.open(self.filename, mode="r", ctx=self.ctx) as array:
