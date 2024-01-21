@@ -46,10 +46,9 @@ class spatial_cache:
         return timeHops + spaceHops
     
     def evict_a_block(self,key):
-        # Iterate through the OrderedDict using a for loop. # value["distance"],value["data"]
         print("evicting a block")
         data = self.cache.pop(key)
-        self.usedSizeInMiB -= data.nbytes/1024/1024
+        self.usedSizeInMiB -= len(data.nbytes/1024/1024) # data.nbytes/1024/1024
 
     def getRadiusFromCapacity(self):
         capacityInMiB = self.capacityInMiB
