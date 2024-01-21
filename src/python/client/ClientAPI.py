@@ -23,7 +23,6 @@ class ClientAPI:
         # GPUの利用権。できればロックフリーにしたいんだけど、さすがに俺には難しい。
         self.GPUmutex = threading.Lock()
         
-
         self.L1Cache = spatial_cache(self.L1CacheSize,self.blockOffset)
         self.L2Cache = spatial_cache(self.L2CacheSize,self.blockOffset)
         self.decompressor = Decompressor(L1Cache=self.L1Cache)
@@ -33,42 +32,38 @@ class ClientAPI:
 
         # 初期コンタクト
         response_code = self.netIF.firstContact(BlockOffset=blockSize,L3Size=L3Size,L4Size=L4Size,targetTol=targetTol)
-        if (response_code != 200):
-            print("initialization failed in server.")
+        if (response_code != 200 ):
+            print("Initialization with the Server : Fail")
             exit(0)
         else:
-            print("Initalization Success")
+            print("Initalization with the Server : Success")
 
-        # fetchLoop threadはconstructorの中で起動
         self.L2pref = L2Prefetcher(L2Cache=self.L2Cache,GPUmutex=self.GPUmutex,serverURL=self.serverURL,targetTol=targetTol) 
-
-        # fetchLoop threadはconstructorの中で起動。L1prefは自分でdecompressorのインスタンスを持っている
         self.L1pref = L1Prefetcher(L1Cache=self.L1Cache,L2Cache=self.L2Cache,offsetSize=self.blockOffset,GPUmutex=self.GPUmutex,TargetTol=targetTol)
         self.recomposer = Recomposer(blockOffset=self.blockOffset)
 
         # スレッド数
         self.thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=8)
 
-        # stats (L1Hit L2Hit ServerRequest)
+        # stats
         self.numL1Hit = 0
         self.numL2Hit = 0
         self.numReqTime = 0
         self.DecompElapsed = [] 
 
     def reInit(self,L1CacheSize,L2CacheSize,L3CacheSize,L4CacheSize,blockSize,policy='LRU'):
+        
         self.blockSize = blockSize
-
-        # 別スレッドで走っているプリフェッチを停止 (RuntimeError: threads can only be started onceに注意)
-        print("stopping the prefetch thread")
+        print("Stopping the prefetch thread")
         self.L1pref.stop()
         self.L2pref.stop()
 
-        # プリフェッチのサイズも変更
+        # プリフェッチのサイズ変更
         self.L1Cache.changeBlockoffset(self.blockSize)
         self.L2Cache.changeBlockoffset(self.blockSize)
 
-        # サイズを変更
-        print("changin the cache size and block offset")
+        # サイズ変更
+        print("Changin the cache size and block offset")
         self.L1Cache.changeCapacity(L1CacheSize)
         self.L2Cache.changeCapacity(L2CacheSize)
         self.L1CacheSize = L1CacheSize
@@ -77,7 +72,7 @@ class ClientAPI:
         self.L4CacheSize = L4CacheSize
         
         # キャッシュをクリア
-        print("clearing the cache")
+        print("Clearing the cache")
         self.L1Cache.clearCache()
         self.L2Cache.clearCache()
         
@@ -96,17 +91,17 @@ class ClientAPI:
         print("L3Size:{}\nL4Size:{}\nblockSize:{}\n".format
               (self.L1CacheSize,
                self.L2CacheSize,
-                self.L3Cache.capacity,
+               self.L3Cache.capacity,
                self.L4Cache.capacity,
                self.blockSize,
                ))
         
         
         self.netIF.reInitRequest(self.blockOffset,L3CacheSize,L4CacheSize)
-        print("Request accepted by the Server")
+        print("Reint request accepted by the Server")
 
         time.sleep(6) # give the server some time
-        print("Start prefetching")
+        print("Restart prefetching.")
 
         # プリフェッチを開始
         self.L2pref.startPrefetching()
@@ -125,7 +120,7 @@ class ClientAPI:
     
     def L2MissHandler(self,blockId,BlockAndData):
 
-        compressed = self.netIF.send_req_urgent_usr(blockId)
+        compressed = self.netIF.send_req_usr(blockId)
         self.L2Cache.put(blockId,compressed)
 
         decomp_start = time.time()
@@ -133,7 +128,7 @@ class ClientAPI:
         decomp_end = time.time()
 
         self.L1Cache.put(blockId,original)
-        print("Put Data to L1 by L2MissHandler!")
+        print("Put Data to L1 by L2MissHandler")
         self.DecompElapsed.append(decomp_end - decomp_start)
         BlockAndData[blockId] = original
 
@@ -141,7 +136,7 @@ class ClientAPI:
     def L2HitHandler(self,blockId,BlockAndData):
         
         compressed = self.L2Cache.get(blockId)
-
+        
         decomp_start = time.time()
         original = self.decompressor.decompress(compressed)
         decomp_end = time.time()
@@ -169,30 +164,30 @@ class ClientAPI:
             # inform user point to all prefetchers
             self.L2pref.InformUserPoint(blockId)
             self.L1pref.InformUserPoint(blockId)
-            self.netIF.send_user_point(blockId)
+            self.netIF.send_user_point(blockId) # all so send to L3 and L4
 
             if L1data is None: # L1 Miss
 
-                print("L1 Miss Happend")
+                print("L1 Miss")
                 self.L1pref.InformL1MissByUser(blockId)
                 L2data = self.L2Cache.get(blockId)
 
                 if L2data is None: # L2 Miss
-                    print("L2 Miss Happend")
+                    print("L2 Miss")
                     self.numReqTime += 1
-                    self.L2pref.InformL2MissByUser(blockId)
+                    # self.L2pref.InformL2MissByUser(blockId) # これも何かするわけではないし、いらないかな。
                     future = self.thread_pool.submit(self.L2MissHandler, blockId, BlockAndData)
                     threads.append(future)
 
                 else: # L2 Hit
                     print("L2 Hit")
                     self.numL2Hit += 1
-                    self.L2pref.InformL1MissL2HitByUser(blockId)
+                    # self.L2pref.InformL1MissL2HitByUser(blockId) # いらない。なぜなら、上で、どのレイヤーのキャッシュも、ユーザ地点を知っているから
                     future = self.thread_pool.submit(self.L2HitHandler, blockId, BlockAndData)
                     threads.append(future)
 
             else: # L1 Hit!
-                print("L1 hit")
+                print("L1 Hit")
                 self.DecompElapsed.append(0)
                 self.numL1Hit += 1
                 BlockAndData[blockId] = L1data

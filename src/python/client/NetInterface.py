@@ -46,12 +46,12 @@ class NetIF:
             'y': str(BlockId[3]),
             'z': str(BlockId[4])
         }
-        response = requests.get(self.URL,headers=header)
 
+        response = requests.get(self.URL,headers=header)
         return response.content
 
     # ユーザからのリクエストはこっちで処理される
-    def send_req_urgent_usr(self,BlockId):
+    def send_req_usr(self,BlockId):
 
         header = {
             'type':'BlockReqUsr',
@@ -74,15 +74,13 @@ class NetIF:
             self.networkLatencys.append(transfer_time/1000)
             rtt = ( end_time - start_time ) 
             self.rtt.append(rtt/1000)
-            print(f"Network Transfer Time: {transfer_time} ms")
-            print(f"f RRT : {rtt}")
+            print(f"NetIF : Network Transfer Time: {transfer_time} ms")
+            print(f"NetIF : RRT : {rtt}")
         else:
-            print("failed to get data network data!! FUCK")
+            print("NetIF : Failed to get data network data")
         
         return response.content
     
-
-
     def requestStats(self):
 
         header = {
@@ -95,13 +93,9 @@ class NetIF:
         self.networkLatencys = []
         self.rtt = []
         return response
-
     
     def reInitRequest(self,BlockOffset,L3Size,L4Size,targetTol):
-        # # 送信キューのクリア
-        # self.sendQ.clear()
 
-        # 諸々変更する必要があります。サーバサイドと同じで。
         header = {
             'type':'init',
             'offset':str(BlockOffset),
@@ -116,10 +110,7 @@ class NetIF:
         return response.status_code
     
     def firstContact(self,BlockOffset,L3Size,L4Size,targetTol):
-        # # 送信キューのクリア
-        # self.sendQ.clear()
 
-        # 諸々変更する必要があります。サーバサイドと同じで。
         header = {
             'type':'init',
             'offset':str(BlockOffset),
@@ -129,71 +120,7 @@ class NetIF:
             'Policy': 'LRU',
             'FileName':'test'
         }
-        print("First contact with setting",header)
+
+        print("NetIF : First contact with server. Sending Server settings")
         response = requests.get(self.URL,headers=header)
         return response.status_code
-    
-
-
-
-### 使わないこ
-
-    # # 末尾に追加
-    # def send_req(self,blockId):
-    #     self.sendQ.append(blockId)
-
-    
-    # def IsSendQEmpty(self):
-    #     if(len(self.sendQ) == 0):
-    #         return True
-    #     else:
-    #         return False
-
-    # def send_req_original_urgent(self,BlockId):
-        
-    #     header = {
-    #         'type':'noCompress',
-    #         'tol':str(BlockId[0]),
-    #         'timestep': str(BlockId[1]),
-    #         'x': str(BlockId[2]),
-    #         'y': str(BlockId[3]),
-    #         'z': str(BlockId[4])
-    #     }
-    #     response = requests.get(self.URL, headers=header)
-    #     response_content = response.content
-    #     numpy_array = np.frombuffer(response_content, dtype=np.float32)
-    #     return numpy_array
-
-    # 別スレッドで実行される送信ループ
-    # async def sendLoop(self):
-    #     while True:
-    #         if self.IsSendQEmpty():
-    #             await asyncio.sleep(0.1)
-    #         else:
-    #             BlockId = self.sendQ.popleft()
-                
-    #             try:
-
-    #                 header = {
-    #                     'type':'BlockReq',
-    #                     'tol':str(BlockId[0]),
-    #                     'timestep':str(BlockId[1]),
-    #                     'x': str(BlockId[2]),
-    #                     'y': str(BlockId[3]),
-    #                     'z': str(BlockId[4])
-    #                 }
-
-    #                 response = requests.get(self.URL,headers=header)
-    #                 self.L2Cache.put(BlockId,response.content)
-    #             except Exception as e:
-    #                 print("送信スレッドでexeptionが発生!")
-    #                 print(e)
-
-    # def net_thread_func(self):
-    #     loop = asyncio.new_event_loop()
-    #     asyncio.set_event_loop(loop)
-    #     loop.run_until_complete(self.sendLoop())   
-
-    # TODO gridFTPの追加?
-    # TODO 時間があったら、いい感じの送信プロトコルを追加。なんかいいやつあるかなー。
-    # TODO CPPで独自プロトコルを実装してやるのが一番いいと感じている。まじで。
