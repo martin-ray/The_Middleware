@@ -73,7 +73,7 @@ class L2Prefetcher:
                 nextBlockId = self.prefetch_q.popleft()
                 compressed = self.Netif.send_req_pref(nextBlockId)
                 self.L2Cache.put(nextBlockId,compressed)
-                self.enque_neighbor_blocks(nextBlockId,d) # ここ、あってるかもう一度確認してくれ。頼む。
+                self.enque_neighbor_blocks(nextBlockId) # ここ、あってるかもう一度確認してくれ。頼む。
 
             else:
                 print(f"L1pref : prefetchQ empty? ={self.prefetch_q_empty()},cache has room ? ={self.L2Cache.usedSizeInMiB < self.L2Cache.capacityInMiB}")
