@@ -262,7 +262,7 @@ class L1Prefetcher:
 
         while not self.stop_thread:
             
-            print("L1 prefetcher is looping")
+            # print("L1 prefetcher is looping")
 
             if (not self.prefetch_q_empty()) and (self.L1Cache.usedSizeInMiB < self.L1Cache.capacityInMiB):
             
@@ -283,7 +283,7 @@ class L1Prefetcher:
             else:
                 print(f"L1 prefethcer:prefetchQ empty? ={self.prefetch_q_empty()}, \
                       cache has room ? ={self.L1Cache.usedSizeInMiB < self.L1Cache.capacityInMiB}")
-                await asyncio.sleep(0.1)  # Sleep for 0.1 second, or adjust as needed
+                await asyncio.sleep(0.2)  # Sleep for 0.1 second, or adjust as needed
 
     def thread_func(self):
         loop = asyncio.new_event_loop()

@@ -94,13 +94,13 @@ def OneExp(tol,L1Size,L2Size,L3Size,L4Size,blockSize,request_sequence,analisisTi
 
     try:
         # 「リクエストを出してから帰ってくるまでの時間」から、各所要時間を引いたもの
-        stats["systemOverhead"] = np.array(latencies) - np.array(stats["StorageReadTime"]) \
-        - np.array(stats["CompTime"]) - np.array(stats["DecompElapsed"]) -np.array(stats["networkLatencys"])
+        stats["systemOverhead"] = np.array(latencies) - stats["rttAvg"] \
+         - np.array(stats["DecompElapsed"]) 
         stats["systemOverheadAvg"] = getAvrExcludingZero(stats["systemOverhead"])[0] # 0 for avg
 
     except Exception as e:
         print(e)
-        stats["systemOverheadAvg"] = stats["PropAverageLatency"] - (stats["storageAvg"] +  stats["compAvg"] + stats["networkAvg"] + stats["decompAvg"])
+        stats["systemOverheadAvg"] = stats["PropAverageLatency"] - (stats["rttAvg"]  + stats["decompAvg"])
 
     stats["numL3PrefFromStorage"] = stats["NumL3Prefetch"] - stats["NumL3PrefetchL4Hit"]
 
@@ -148,7 +148,7 @@ if __name__ == "__main__":
     # tols = [0.3, 0.1 , 0.01, 0.001, 0] # 0 for no compress
     tols = [0.01,0.001,0.0001]
     tols = [0.001, 0.1,0.01,0.001,0.0001]
-    tols = [0.0001]
+    tols = [0.1]
 
 
     # L1Sizes = [0,512, 1024, 2048, 4096, 4096*2 ,4096*4]

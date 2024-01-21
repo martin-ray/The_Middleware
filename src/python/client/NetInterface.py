@@ -72,8 +72,10 @@ class NetIF:
         if network_time != -1:
             transfer_time = end_time - network_time
             self.networkLatencys.append(transfer_time/1000)
-            self.rtt.append((end_time - start_time) / 100)
-            # print(f"Network Transfer Time: {transfer_time} ms")
+            rtt = ( end_time - start_time ) 
+            self.rtt.append(rtt/1000)
+            print(f"Network Transfer Time: {transfer_time} ms")
+            print(f"f RRT : {rtt}")
         else:
             print("failed to get data network data!! FUCK")
         
