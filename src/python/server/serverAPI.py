@@ -25,8 +25,8 @@ class HttpAPI:
         self.DataDim = self.Slicer.getDataDim()
         self.L3Cache = spatial_cache(L3CacheSize,offsetSize=blockSize)
         self.L4Cache = spatial_cache(L4CacheSize,offsetSize=blockSize)
-        self.compressor = compressor(self.L3Cache,device_id=1) # 1 is 80G
-        self.compressor2 = compressor(self.L3Cache,device_id=0) # 0 is 40G for pref
+        self.compressor = compressor(self.L3Cache) # 1 is 80G
+        self.compressor2 = compressor(self.L3Cache) # 0 is 40G for pref
         self.L4Pref = L4Prefetcher(self.L4Cache,dataDim=self.DataDim,blockSize=blockSize,userUsingGPU=self.userUsingGPU,userUsingStorage=self.userUsingStorage,targetTol=targetTol)
         self.L3Pref = L3Prefetcher(self.L3Cache, self.L4Cache,dataDim=self.DataDim,
                                    L4Prefetcher=self.L4Pref,blockOffset=blockSize,
