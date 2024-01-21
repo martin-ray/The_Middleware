@@ -56,9 +56,6 @@ class L3Prefetcher:
             self.thread = threading.Thread(target=self.thread_func)
             self.thread.start()
 
-            # 最初のブロックを投下。最初は絶対にミスしますが。
-            self.enqueue_first_blockId()
-
         # for stats
         self.numPrefetches = 0
         self.numL4Hits = 0
