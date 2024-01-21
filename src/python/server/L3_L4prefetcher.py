@@ -381,7 +381,7 @@ class L4Prefetcher:
         while not self.stop_thread:
             self.L4Cache.printInfo()
 
-            print(f"target tol is ={self.TargetTol}")
+            # print(f"target tol is ={self.TargetTol}")
 
             # ここで帯域幅の奪い合いが生じる。どうする！
             if (not self.prefetch_q_empty()) and (self.L4Cache.usedSizeInMiB <  self.L4Cache.capacityInMiB) and (not self.userUsingStorage.is_locked()):
@@ -529,13 +529,13 @@ class L4Prefetcher:
         self.gonnaPrefetchSet.add(blockId)
 
     def InformUserPoint(self,blockId):
-        print(f"L4:user is at{blockId}")
+        print(f"L4 : user is at{blockId}")
         self.userPoint = blockId
         start = time.time()
         self.evict(blockId)
         self.updatePrefetchQ(blockId)
         end = time.time()
-        print(f"L4:time to update cache info = {end - start}")
+        print(f"L4 : time to update cache info = {end - start}")
 
     # ここ結構時間かかりそうだけど、大丈夫？
     def evict(self,userPoint):
