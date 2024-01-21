@@ -7,7 +7,7 @@ from compressor import compressor
 
 class L3Prefetcher:
 
-    def __init__(self,L3Cache,L4Cache,L4Prefetcher,dataDim, userUsingGPU,userUsingStorage,blockOffset=256, targetTol=0.1 ,n_vector_fetch = 4) -> None:
+    def __init__(self,L3Cache,L4Cache,L4Prefetcher,dataDim, userUsingGPU,userUsingStorage,blockOffset=256, targetTol=0.1 ,n_vector_fetch = 2) -> None:
 
         self.userUsingGPU = userUsingGPU
         self.userUsingStorage = userUsingStorage
@@ -45,7 +45,7 @@ class L3Prefetcher:
         self.stop_thread = False
 
         # ユーザのリクエストシーケンス
-        self.RequestSequences = []
+        self.RequestSequence = []
 
         # フェッチループを起動
         if self.L3Cache.capacityInMiB == 0:
@@ -69,7 +69,6 @@ class L3Prefetcher:
             self.thread.start()
             self.numPrefetches = 0
             self.numL4Hits = 0
-            self.enqueue_first_blockId()
             print("restarted L3 prefetcher!")
         else :
             print("L3 cache size is 0. So L3 prefetcher is not starting")
@@ -86,7 +85,7 @@ class L3Prefetcher:
         self.blockOffset = blockOffset
         self.TargetTol = float(targetTol)
         self.radius = self.getRadiusFromCapacity()*self.estimatedCompratio
-        self.RequestSequences = []
+        self.RequestSequence = []
 
     def changeBlockOffset(self,blockOffset):
         self.blockOffset = blockOffset        
@@ -141,7 +140,7 @@ class L3Prefetcher:
                     compressed = self.compressor.compress(original,tol)
                     self.L3Cache.put(nextBlockId,compressed)
                 self.prefetchedSet.add(nextBlockId)
-                self.enque_neighbor_blocks(nextBlockId,distance)
+                self.enque_neighbor_blocks(nextBlockId)
 
             else:
                 print("L3: Queue empty?={}, Cache full?={}, GPU locked = {}, Storage locked={}".format(
@@ -255,7 +254,7 @@ class L3Prefetcher:
 
     # ユーザの位置が知らされるたびにこれを実行する。内容は簡単。
     def updatePrefetchQ(self,userPoint):
-        self.enque_neighbor_blocks_to_front(userPoint,0) # でいんじゃね？って思った。
+        self.enque_neighbor_blocks_to_front(userPoint) # でいんじゃね？って思った。
     
     def thread_func(self):
         loop = asyncio.new_event_loop()
@@ -275,25 +274,24 @@ class L3Prefetcher:
         if len(latest_sequences) <= 2 :
             return # バグ防止
         
-        v1 = np.subtract(latest_sequences[2] - latest_sequences[1])
-        v0 = np.subtract(latest_sequences[1] - latest_sequences[0])
+        v1 = np.subtract(latest_sequences[2],latest_sequences[1])
+        v0 = np.subtract(latest_sequences[1],latest_sequences[0])
 
-        if (v1 == v0):
+        if (np.array_equal(v1, v0)):
             # そっち方向のベクトルをfetch_numsこ、プリフェッチキューの先頭に入れさせていただきます。
-            tol = self.targetTol
+            tol = self.TargetTol
             timestep = self.userPoint[1]
             x = self.userPoint[2]
             y = self.userPoint[3]
             z = self.userPoint[4]
             
-            dt = v1[1]
-            dx = v1[2]
-            dy = v1[3]
-            dz = v1[4]
+            dt = int(v1[1])
+            dx = int(v1[2])
+            dy = int(v1[3])
+            dz = int(v1[4])
 
             for n in range(self.n_vector_fetch):
                 if self.gonnaPrefetchSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
-                    self.prefetch_q.remove((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
                     self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
                 else:
                     self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
@@ -302,7 +300,7 @@ class L3Prefetcher:
 
 class L4Prefetcher:
 
-    def __init__(self,L4Cache,dataDim,blockSize,userUsingGPU,userUsingStorage,targetTol = 0.1,n_vector_fetch = 4):
+    def __init__(self,L4Cache,dataDim,blockSize,userUsingGPU,userUsingStorage,targetTol = 0.1,n_vector_fetch = 2):
 
         self.userUsingGPU = userUsingGPU
         self.userUsingStorage = userUsingStorage
@@ -384,7 +382,7 @@ class L4Prefetcher:
 
     ### フェッチスレッド用メソッド ###
     
-    # 別スレッドで実行される本体
+    # 別スレッドで実行されるループ
     async def fetchLoop(self):
 
         while not self.stop_thread:
@@ -399,6 +397,7 @@ class L4Prefetcher:
                     continue
 
                 self.numPrefetches += 1
+                print(nextBlockId)
                 data = self.Slicer.sliceData(nextBlockId)
                 self.L4Cache.put(nextBlockId,data)
                 self.prefetchedSet.add(nextBlockId)
@@ -529,7 +528,7 @@ class L4Prefetcher:
 
     # ユーザの位置が知らされるたびにこれを実行
     def updatePrefetchQ(self,userPoint):
-        self.enque_neighbor_blocks_to_front(userPoint,0)
+        self.enque_neighbor_blocks_to_front(userPoint)
 
     def cal_move_vector_and_prefetch(self,numSeq=3): # numSeq : ラストnumSeq個のnumSeqから、方向を算出
         
@@ -537,25 +536,24 @@ class L4Prefetcher:
         if len(latest_sequences) <= 2 :
             return # バグ防止
         
-        v1 = np.subtract(latest_sequences[2] - latest_sequences[1])
-        v0 = np.subtract(latest_sequences[1] - latest_sequences[0])
+        v1 = np.subtract(latest_sequences[2],latest_sequences[1])
+        v0 = np.subtract(latest_sequences[1],latest_sequences[0])
 
-        if (v1 == v0):
-            # そっち方向のベクトルをfetch_numsこ、プリフェッチキューの先頭に入れさせていただきます。
-            tol = self.targetTol
+        if (np.array_equal(v1, v0)):
+
+            tol = self.TargetTol
             timestep = self.userPoint[1]
             x = self.userPoint[2]
             y = self.userPoint[3]
             z = self.userPoint[4]
             
-            dt = v1[1]
-            dx = v1[2]
-            dy = v1[3]
-            dz = v1[4]
+            dt = int(v1[1])
+            dx = int(v1[2])
+            dy = int(v1[3])
+            dz = int(v1[4])
 
             for n in range(self.n_vector_fetch):
                 if self.gonnaPrefetchSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
-                    self.prefetch_q.remove((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
                     self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
                 else:
                     self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
