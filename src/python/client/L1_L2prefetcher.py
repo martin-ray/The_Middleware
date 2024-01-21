@@ -183,16 +183,6 @@ class L2Prefetcher:
     def updatePrefetchQ(self,userPoint):
         self.enque_neighbor_blocks_to_front(userPoint,0) # でいんじゃね？って思った。
 
-    ### 削除予定
-    # def InformL2MissByL1Pref(self,blockId):
-    #     print("L1 prefetcher missed to catch on L2 cache:{}\n".format(blockId))
-
-    # def InformL2MissByUser(self,blockId):
-    #     # print("L1 and L2 Missed the request by user:{}\n",blockId)
-    #     self.prefetchedSet.add(blockId)
-
-    # def InformL1MissL2HitByUser(self,blockId):
-    #     print("the data was catched in L2: {}\n".format(blockId))
 
 class L1Prefetcher:
 
@@ -269,7 +259,7 @@ class L1Prefetcher:
 
                 if compressed is None: # L2Miss
                     print("L1pref : try to prefetch from L2 but missed. giving up")
-                    pass
+                    self.gonnaPrefetchSet.discard(nextBlockId) # 取りに行けなかったので、ここであきらめる。
 
                 else: # L2Hit
                     print("L1pref : prefetched from L2")
@@ -280,7 +270,7 @@ class L1Prefetcher:
 
                 self.enque_neighbor_blocks(nextBlockId,distance)
             else:
-                print(f"L1 prefethcer:prefetchQ empty? ={self.prefetch_q_empty()},cache has room ? ={self.L1Cache.usedSizeInMiB < self.L1Cache.capacityInMiB}")
+                print(f"L1pref : Stall prefetcing.prefetchQ empty? ={self.prefetch_q_empty()},cache has room ? ={self.L1Cache.usedSizeInMiB < self.L1Cache.capacityInMiB}")
                 await asyncio.sleep(0.2)  
 
     def thread_func(self):
@@ -320,7 +310,8 @@ class L1Prefetcher:
                             self.prefetch_q.append(((tol,timestep, x+dx, y+dy, z+dz),distance))
                             self.gonnaPrefetchSet.add((tol,timestep, x+dx, y+dy, z+dz))
 
-    def enque_neighbor_blocks_to_front(self,centerBlock,d):
+    def enque_neighbor_blocks_to_front(self,centerBlock,d): # ここで、すでにgonnaPrefetchsetにはいってるからスルーされると見た。
+
         tol = self.targetTol # centerBlock[0] 
         timestep = centerBlock[1]
         x = centerBlock[2]
@@ -357,18 +348,6 @@ class L1Prefetcher:
         self.userPoint = blockId
         self.update_cache(blockId)
         self.updatePrefetchQ(blockId)
-
-
-    def InformL1MissByUser(self,blockId):
-        print("L1pref : User missed to catch in L1: {}\n".format(blockId))
-
-    def InformL1MissAndL2Hit(self,blockId):
-        print("L1pref : User missed to catch in L1 and Hit on L2: {}\n".format(blockId))
-
-    def InformL1MissAndL2Miss(self,blockId):
-        print("L1pref : L1 miss and L2 miss: {}\n".format(blockId))
-        self.update_cache(blockId)
-        self.enque_neighbor_blocks(blockId)
     
     def prefetch_q_empty(self):
         if(len(self.prefetch_q) == 0):
@@ -389,6 +368,7 @@ class L1Prefetcher:
     def updatePrefetchQ(self,userPoint):
         self.enque_neighbor_blocks_to_front(userPoint,0) # でいんじゃね？って思った。
 
+
     def calHops(self,centerBlockId,targetBlockId):
         timeHops = abs(centerBlockId[1]-targetBlockId[1])
         xHops = abs(centerBlockId[2]- targetBlockId[2])
@@ -407,8 +387,7 @@ class L1Prefetcher:
             radius += 1
         print(f"L1 caches radius={radius}")
         return radius
-
-
+    
 
 
 
