@@ -33,9 +33,9 @@ class spatial_cache:
                 pass
             elif self.usedSizeInMiB >= self.capacityInMiB:
                 removedItem = self.cache.popitem(last=False) # returns (key,value).
-                self.usedSizeInMiB -= removedItem[1].nbytes/1024/1024
+                self.usedSizeInMiB -=  len(removedItem[1])/1024/1024# removedItem[1].nbytes/1024/1024
             self.cache[key] = value
-            self.usedSizeInMiB += value.nbytes/1024/1024
+            self.usedSizeInMiB += len(value)/1024/1024
 
     def calHops(self,centerBlockId,targetBlockId):
         timeHops = abs(centerBlockId[1]-targetBlockId[1])
@@ -105,7 +105,7 @@ class spatial_cache:
 # Example usage and test
 if __name__ == "__main__":
     cache_capacity = 10
-    lru_cache = LRU_cache(cache_capacity)
+    lru_cache = spatial_cache(cache_capacity)
     lru_cache.put("key1", "value1")
     lru_cache.put("key2", "value2")
     lru_cache.put("key3", "value3")
