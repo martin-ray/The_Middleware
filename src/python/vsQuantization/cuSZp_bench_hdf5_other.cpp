@@ -76,19 +76,16 @@ struct Statistics print_statistics(float *data_ori, const float *data_dec,
 
 }
 
-  // slicing 
-  long long unsigned int start_1 = 0;
-  long long unsigned int start_2 = 0;
-  long long unsigned int start_3 = 0;
-  long long unsigned int start_4 = 0;
+// slicing 
+long long unsigned int start_1 = 0;
+long long unsigned int start_2 = 0;
+long long unsigned int start_3 = 0;
+long long unsigned int start_4 = 0;
 
-  long long unsigned int n1 = 1;
-  long long unsigned int n2 = 1024/2;
-  long long unsigned int n3 = 1024/2/2/2;
-  long long unsigned int n4 = 1024/2/2/2;
-
-  // tolerance 
-  float tol = 0.0001;
+long long unsigned int n1 = 1;
+long long unsigned int n2 = 1024/2;
+long long unsigned int n3 = 1024/2/2/2;
+long long unsigned int n4 = 1024/2/2/2;
 
 std::string prefix = "./SDRbench/";
 
@@ -108,7 +105,7 @@ std::vector<std::string> file_paths = {
 };
 
 std::vector<float> tols = {
-    0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.02, 0.03, 0.05, 0.1,
+    0.000001,0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.02, 0.03, 0.05, 0.1,
 };
 
 std::vector<long unsigned int> offsetSizes = {
@@ -173,19 +170,17 @@ int main(int argc, char *argv[]) {
                     cmpBytes = (unsigned char*)malloc(nbEle*sizeof(float));
 
                     // Generating error bounds.
-                    if(strcmp(errorMode, "REL")==0)
+                    float max_val = oriData[0];
+                    float min_val = oriData[0];
+
+                    for(size_t i=0; i<nbEle; i++)
                     {
-                        float max_val = oriData[0];
-                        float min_val = oriData[0];
-                        for(size_t i=0; i<nbEle; i++)
-                        {
-                            if(oriData[i]>max_val)
-                                max_val = oriData[i];
-                            else if(oriData[i]<min_val)
-                                min_val = oriData[i];
-                        }
-                        errorBound = errorBound * (max_val - min_val);
+                        if(oriData[i]>max_val)
+                            max_val = oriData[i];
+                        else if(oriData[i]<min_val)
+                            min_val = oriData[i];
                     }
+                    errorBound = errorBound * (max_val - min_val);
 
                     // warm up
                     for(int i=0;i<3;i++)SZp_compress_hostptr_f32(oriData, cmpBytes, nbEle, &cmpSize, errorBound);
@@ -203,9 +198,8 @@ int main(int argc, char *argv[]) {
                     end = std::chrono::high_resolution_clock::now();
                     float decomptime = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
-                    float total_time = comptime + decomptime;
-                    // Print result.
-                    // printf("cuSZp finished!\n");
+                    float total_time = (comptime + decomptime)/1000.0;
+
                     float comp_ratio = (nbEle*sizeof(float)/1024.0/1024.0)/(cmpSize*sizeof(unsigned char)/1024.0/1024.0);
                     Statistics stats;
                     stats = print_statistics(oriData,decData,elements);
@@ -279,7 +273,7 @@ int main(int argc, char *argv[]) {
                     stats = print_statistics(oriData,decData,elements);
                     // std::cout << "finish print_statistics" << std::endl;
                     //'tol', 'oriSize','compressedsize','psnr','max_error','rmse','comp_ratio','method',"time","data"
-                    printf("%f,%d,%d,%f,%f,%f,%f,cuSZp,%f,",tol,OriginalSize,cmpSize,stats.psnr,stats.max_err,stats.rmse,comp_ratio,total_time);
+                    printf("%lf,%lld,%ld,%f,%f,%f,%f,cuSZp,%f,",tol,OriginalSize,cmpSize,stats.psnr,stats.max_err,stats.rmse,comp_ratio,total_time);
                     std::cout << file_path << std::endl;
                     delete[] oriFilePath2;
                     // delete[] oriData;
