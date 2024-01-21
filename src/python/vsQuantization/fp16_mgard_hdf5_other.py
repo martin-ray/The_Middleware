@@ -80,12 +80,20 @@ class Slicer:
 # あとは、
 slicer = Slicer("/scratch/aoyagir/step128.h5")
 prefix = "./SDRbench/"
-file_paths = ["Hurricate_ISABEL/100x500x500/CLOUDf48.bin.f32",
-              "Hurricate_ISABEL/100x500x500/PRECIPf48.bin.f32",
-              "Hurricate_ISABEL/100x500x500/QCLOUDf48.bin.f32",
-              "Hurricate_ISABEL/100x500x500/Vf48.bin.f32",
-              "NYX/SDRBENCH-EXASKY-NYX-512x512x512/dark_matter_density.f32",
-              "JHTDB"]
+file_paths = [
+            "Hurricate_ISABEL/100x500x500/CLOUDf48.bin.f32",
+            "Hurricate_ISABEL/100x500x500/PRECIPf48.bin.f32",
+            "Hurricate_ISABEL/100x500x500/QCLOUDf48.bin.f32",
+            "Hurricate_ISABEL/100x500x500/Vf48.bin.f32",
+            "NYX/SDRBENCH-EXASKY-NYX-512x512x512/dark_matter_density.f32",
+            "SDRBENCH-SCALE_98x1200x1200/PRES-98x1200x1200.f32",
+            "SDRBENCH-SCALE_98x1200x1200/RH-98x1200x1200.f32",
+            "SDRBENCH-SCALE_98x1200x1200/QS-98x1200x1200.f32",
+            "SDRBENCH-SCALE_98x1200x1200/QR-98x1200x1200.f32",
+            "SDRBENCH-SCALE_98x1200x1200/V-98x1200x1200.f32",
+            "SDRBENCH-SCALE_98x1200x1200/V-98x1200x1200.f32",
+            "JHTDB"
+        ]
 # create a file to write the results
 import csv
 from datetime import datetime
