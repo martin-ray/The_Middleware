@@ -27,7 +27,7 @@ class L3Prefetcher:
 
         # L3PrefetcherとL4Prefetcherで別々のもの持ってないと片方が一生使えなくなる->そんなことはないっぽいけど、別々に持ってた方がいい性能が出るんだよね。
         self.Slicer = TileDBSlicer(blockOffset=blockOffset)
-        self.compressor = compressor(self.L3Cache,device_id=0) # 0 for a100 40G 1 for a100 80G
+        self.compressor = compressor(self.L3Cache) # 0 for a100 40G 1 for a100 80G
         self.L4Pref = L4Prefetcher
 
         # 取りに行く予定があるブロックのセット (重複を避けるために)
@@ -87,7 +87,7 @@ class L3Prefetcher:
         self.gonnaPrefetchSet = set()
         self.prefetch_q = deque()
         self.blockOffset = blockOffset
-        self.TargetTol = targetTol
+        self.TargetTol = float(targetTol)
         self.radius = self.getRadiusFromCapacity()*self.estimatedCompratio
 
     def changeBlockOffset(self,blockOffset):
@@ -267,10 +267,8 @@ class L3Prefetcher:
         # キャッシュの要素を取り出していく。
         for blockId in self.L3Cache.cache.keys():
             hops = self.calHops(userPoint,blockId)
-            # print("L3 : user point={},block={},dist={}".format(
-            #     userPoint,blockId,hops
-            # ))
             if (hops > self.radius) and self.L3Cache.isCacheFull():
+                print(f"L3 pref evicting block : {blockId}")
                 self.L3Cache.evict_a_block(blockId)
                 self.prefetchedSet.discard(blockId)
 
@@ -371,7 +369,7 @@ class L4Prefetcher:
         self.prefetchedSet = set()
         self.gonnaPrefetchSet = set()
         self.prefetch_q = deque()
-        self.TargetTol = targetTol
+        self.TargetTol = float(targetTol)
         self.blockOffset = blockOffset
         self.radius = 10 #self.getRadiusFromCapacity()
 
@@ -382,6 +380,8 @@ class L4Prefetcher:
 
         while not self.stop_thread:
             self.L4Cache.printInfo()
+
+            print(f"target tol is ={self.TargetTol}")
 
             # ここで帯域幅の奪い合いが生じる。どうする！
             if (not self.prefetch_q_empty()) and (self.L4Cache.usedSizeInMiB <  self.L4Cache.capacityInMiB) and (not self.userUsingStorage.is_locked()):
@@ -540,23 +540,16 @@ class L4Prefetcher:
     # ここ結構時間かかりそうだけど、大丈夫？
     def evict(self,userPoint):
         # キャッシュの要素を取り出していく。
-        print("evicting")
         for blockId,blockValue in self.L4Cache.cache.items():
             hops = self.calHops(userPoint,blockId)
             if (hops > self.radius) and self.L4Cache.isCacheFull():
+                print(f"L4 pref evicting a block : {blockId}")
                 self.L4Cache.evict_a_block(blockId)
                 self.prefetchedSet.discard(blockId)
 
     # ユーザの位置が知らされるたびにこれを実行する。内容は簡単。
     def updatePrefetchQ(self,userPoint):
         self.enque_neighbor_blocks_to_front(userPoint,0) # でいんじゃね？って思った。
-
-
-    ################# L3プリフェッチャーからの読み出しリクエスト ############
-
-    def L3ReadReq(self,blockId):
-
-        pass
 
 
 
