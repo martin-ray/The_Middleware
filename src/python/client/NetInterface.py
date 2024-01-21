@@ -36,7 +36,7 @@ class NetIF:
     
     
     # プリフェッチャのリクエストはこっちで処理される
-    def send_req_urgent(self,BlockId):
+    def send_req_pref(self,BlockId):
 
         header = {
             'type':'BlockReq',

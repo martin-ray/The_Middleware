@@ -36,6 +36,7 @@ class L2Prefetcher:
 
         # フェッチループを起動
         if self.L2Cache.capacityInMiB == 0 and OnSwitch == False:
+            print("L2pref : Not start prefetching because L2 cache size is 0")
             pass
         else:
             self.thread = threading.Thread(target=self.thread_func)
@@ -68,14 +69,14 @@ class L2Prefetcher:
     async def fetchLoop(self):
         while not self.stop_thread:
             if (not self.prefetch_q_empty()) and (self.L2Cache.usedSizeInMiB < self.L2Cache.capacityInMiB):
-                print("L2 pref looping")
                 nextBlockId,d = self.pop_front()
-                compressed = self.Netif.send_req_urgent(nextBlockId)
+                compressed = self.Netif.send_req_pref(nextBlockId)
                 self.L2Cache.put(nextBlockId,compressed)
                 self.enque_neighbor_blocks(nextBlockId,d) # ここ、あってるかもう一度確認してくれ。頼む。
 
             else:
-                await asyncio.sleep(0.01)  # Sleep for 1 second, or adjust as needed
+                print(f"L1pref : prefetchQ empty? ={self.prefetch_q_empty()},cache has room ? ={self.L2Cache.usedSizeInMiB < self.L2Cache.capacityInMiB}")
+                await asyncio.sleep(0.1)  # Sleep for 1 second, or adjust as needed
 
     def thread_func(self):
         loop = asyncio.new_event_loop()
@@ -158,16 +159,6 @@ class L2Prefetcher:
         else:
             return False
 
-    def InformL2MissByL1Pref(self,blockId):
-        print("L1 prefetcher missed to catch on L2 cache:{}\n".format(blockId))
-
-    def InformL2MissByUser(self,blockId):
-        # print("L1 and L2 Missed the request by user:{}\n",blockId)
-        self.prefetchedSet.add(blockId)
-
-    def InformL1MissL2HitByUser(self,blockId):
-        print("the data was catched in L2: {}\n".format(blockId))
-
     def calHops(self,centerBlockId,targetBlockId):
         timeHops = abs(centerBlockId[1]-targetBlockId[1])
         xHops = abs(centerBlockId[2]- targetBlockId[2])
@@ -178,39 +169,48 @@ class L2Prefetcher:
 
     def InformUserPoint(self,blockId):
         self.userPoint = blockId
-        self.evict(blockId)
+        self.update_cache(blockId)
         self.updatePrefetchQ(blockId)
 
-    def evict(self,userPoint):
-        # print("evicting")
+    def update_cache(self,userPoint):
         for blockId in self.L2Cache.cache.keys():
             hops = self.calHops(userPoint,blockId)
             if (hops > self.radius) and self.L2Cache.isCacheFull():
                 self.L2Cache.evict_a_block(blockId)
                 self.prefetchedSet.discard(blockId)
 
-    # ユーザの位置が知らされるたびにこれを実行する。内容は簡単。
+    # ユーザの位置が知らされるたびにこれを実行.ユーザの位置の周りのブロックをプリフェッチ対象に追加
     def updatePrefetchQ(self,userPoint):
         self.enque_neighbor_blocks_to_front(userPoint,0) # でいんじゃね？って思った。
+
+    ### 削除予定
+    # def InformL2MissByL1Pref(self,blockId):
+    #     print("L1 prefetcher missed to catch on L2 cache:{}\n".format(blockId))
+
+    # def InformL2MissByUser(self,blockId):
+    #     # print("L1 and L2 Missed the request by user:{}\n",blockId)
+    #     self.prefetchedSet.add(blockId)
+
+    # def InformL1MissL2HitByUser(self,blockId):
+    #     print("the data was catched in L2: {}\n".format(blockId))
 
 class L1Prefetcher:
 
     ################## コンストラクタ ##################
     def __init__(self,L1Cache,L2Cache,GPUmutex,maxTimestep=9,offsetSize=256,OnSwitch=True, TargetTol= 0.1):
 
-
         self.L1Cache = L1Cache
         self.L2Cache = L2Cache
         self.decompressor = Decompressor(self.L1Cache)
-
-        # 自分で持つことにしました。
         self.Netif = NetIF(self.L2Cache)
+        
         self.maxTimestep = maxTimestep
         self.maxX = 1024
         self.maxY = 1024
         self.maxZ = 1024
         self.default_offset = offsetSize
         self.blockOffset = offsetSize
+        
         self.gonnaPrefetchSet = set()
         self.prefetchedSet = set()
         self.prefetch_q = deque()
@@ -239,9 +239,9 @@ class L1Prefetcher:
         if self.L3Cache.capacity > 0:
             self.thread = threading.Thread(target=self.thread_func)
             self.thread.start()
-            print("Started L1 prefetcher!")
+            print("L1pref : Start prefetching")
         else :
-            print("L1 cache size is 0. So L1 prefetcher is not starting")
+            print("L1pref : L1 cache size is 0. So L1 prefetcher is not starting")
 
     def stop(self):
         self.stop_thread = True
@@ -261,19 +261,18 @@ class L1Prefetcher:
     async def fetchLoop(self):
 
         while not self.stop_thread:
-            
-            # print("L1 prefetcher is looping")
 
             if (not self.prefetch_q_empty()) and (self.L1Cache.usedSizeInMiB < self.L1Cache.capacityInMiB):
-            
+
                 nextBlockId,distance = self.pop_front()
                 compressed = self.L2Cache.get(nextBlockId)
 
                 if compressed is None: # L2Miss
-                    # これ以上、下にリクエストするのをあきらめる
+                    print("L1pref : try to prefetch from L2 but missed. giving up")
                     pass
 
                 else: # L2Hit
+                    print("L1pref : prefetched from L2")
                     original = None
                     with self.GPUmutex:
                         original = self.decompressor.decompress(compressed)
@@ -281,9 +280,8 @@ class L1Prefetcher:
 
                 self.enque_neighbor_blocks(nextBlockId,distance)
             else:
-                print(f"L1 prefethcer:prefetchQ empty? ={self.prefetch_q_empty()}, \
-                      cache has room ? ={self.L1Cache.usedSizeInMiB < self.L1Cache.capacityInMiB}")
-                await asyncio.sleep(0.2)  # Sleep for 0.1 second, or adjust as needed
+                print(f"L1 prefethcer:prefetchQ empty? ={self.prefetch_q_empty()},cache has room ? ={self.L1Cache.usedSizeInMiB < self.L1Cache.capacityInMiB}")
+                await asyncio.sleep(0.2)  
 
     def thread_func(self):
         loop = asyncio.new_event_loop()
@@ -356,21 +354,20 @@ class L1Prefetcher:
         return self.prefetch_q.popleft()
     
     def InformUserPoint(self,blockId):
-
         self.userPoint = blockId
-        self.evict(blockId)
+        self.update_cache(blockId)
         self.updatePrefetchQ(blockId)
 
 
     def InformL1MissByUser(self,blockId):
-        print("User missed to catch in L1: {}\n".format(blockId))
+        print("L1pref : User missed to catch in L1: {}\n".format(blockId))
 
     def InformL1MissAndL2Hit(self,blockId):
-        print("User missed to catch in L1 and Hit on L2: {}\n".format(blockId))
+        print("L1pref : User missed to catch in L1 and Hit on L2: {}\n".format(blockId))
 
     def InformL1MissAndL2Miss(self,blockId):
-        print("L1 miss and L2 miss: {}\n".format(blockId))
-        self.clearQueue()
+        print("L1pref : L1 miss and L2 miss: {}\n".format(blockId))
+        self.update_cache(blockId)
         self.enque_neighbor_blocks(blockId)
     
     def prefetch_q_empty(self):
@@ -380,15 +377,15 @@ class L1Prefetcher:
             return False
 
     # キャッシュの要素をひとつづつ見て、半径に収まらない場合は、捨てる
-    def evict(self,userPoint):
-        print("L1 prefetcher is evicting")
+    def update_cache(self,userPoint):
         for blockId in self.L1Cache.cache.keys():
             hops = self.calHops(userPoint,blockId)
             if (hops > self.radius) and self.L1Cache.isCacheFull():
+                print(f"L1pref : evicting {blockId}. distance with userPoint {userPoint} is {hops}")
                 self.L1Cache.evict_a_block(blockId)
                 self.prefetchedSet.discard(blockId)
 
-    # ユーザの位置が知らされるたびにこれを実行する。内容は簡単。
+    # ユーザの位置が知らされるたびにこれを実行.内容は簡単。
     def updatePrefetchQ(self,userPoint):
         self.enque_neighbor_blocks_to_front(userPoint,0) # でいんじゃね？って思った。
 
@@ -410,10 +407,9 @@ class L1Prefetcher:
             radius += 1
         print(f"L1 caches radius={radius}")
         return radius
-    
-# unit test
-if __name__ == "__main__":
-    print("test")
+
+
+
 
 
 
