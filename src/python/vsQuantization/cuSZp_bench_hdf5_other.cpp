@@ -22,45 +22,57 @@ std::string filename = "/scratch/aoyagir/step128.h5";
 
 using namespace std;
 
-float print_statistics(float *data_ori, const float *data_dec,
+struct Statistics {
+    float psnr;
+    double max_err;
+    double rmse;
+};
+
+struct Statistics print_statistics(float *data_ori, const float *data_dec,
                       size_t data_size) {
 
 
-//   std::cout << "In print_statistics function" << std::endl;
-  float max_val = data_ori[0];
-  float min_val = data_ori[0];
-  float max_abs = fabs(data_ori[0]);
+    Statistics stats;
 
-//   std::cout << "stat step1" << std::endl;
-  for (int i = 0; i < data_size; i++) {
-    if (data_ori[i] > max_val)
-      max_val = data_ori[i];
-    if (data_ori[i] < min_val)
-      min_val = data_ori[i];
-    if (fabs(data_ori[i]) > max_abs)
-      max_abs = fabs(data_ori[i]);
-  }
+    //   std::cout << "In print_statistics function" << std::endl;
+    float max_val = data_ori[0];
+    float min_val = data_ori[0];
+    float max_abs = fabs(data_ori[0]);
 
-//   std::cout << "stat step2" << std::endl;
-  double max_err = 0;
-  int pos = 0;
-  double mse = 0;
-
-  for (int i = 0; i < data_size; i++) {
-    double err = data_ori[i] - data_dec[i];
-    mse += err * err;
-    if (fabs(err) > max_err) {
-      pos = i;
-      max_err = fabs(err);
+    //   std::cout << "stat step1" << std::endl;
+    for (int i = 0; i < data_size; i++) {
+        if (data_ori[i] > max_val)
+        max_val = data_ori[i];
+        if (data_ori[i] < min_val)
+        min_val = data_ori[i];
+        if (fabs(data_ori[i]) > max_abs)
+        max_abs = fabs(data_ori[i]);
     }
-  }
-  mse /= data_size;
 
-  double psnr = 20 * log10((max_val - min_val) / sqrt(mse));
-//   cout << "Max value = " << max_val << ", min value = " << min_val << endl;
-//   cout << "Max error = " << max_err << ", pos = " << pos << endl;
-//   cout << "MSE = " << mse << ", PSNR = " << psnr << endl;
-  return psnr;
+    //   std::cout << "stat step2" << std::endl;
+    double max_err = 0;
+    int pos = 0;
+    double mse = 0;
+
+    for (int i = 0; i < data_size; i++) {
+        double err = data_ori[i] - data_dec[i];
+        mse += err * err;
+        if (fabs(err) > max_err) {
+        pos = i;
+        max_err = fabs(err);
+        }
+    }
+    mse /= data_size;
+
+    double psnr = 20 * log10((max_val - min_val) / sqrt(mse));
+    //   cout << "Max value = " << max_val << ", min value = " << min_val << endl;
+    //   cout << "Max error = " << max_err << ", pos = " << pos << endl;
+    //   cout << "MSE = " << mse << ", PSNR = " << psnr << endl;
+    double rmse = sqrt(mse);
+    stats.psnr = psnr;
+    stats.max_err = max_err;
+    stats.rmse = rmse;
+    return stats;
 
 }
 
@@ -86,6 +98,12 @@ std::vector<std::string> file_paths = {
     "Hurricate_ISABEL/100x500x500/QCLOUDf48.bin.f32",
     "Hurricate_ISABEL/100x500x500/Vf48.bin.f32",
     "NYX/SDRBENCH-EXASKY-NYX-512x512x512/dark_matter_density.f32",
+    "SDRBENCH-SCALE_98x1200x1200/PRES-98x1200x1200.f32",
+    "SDRBENCH-SCALE_98x1200x1200/RH-98x1200x1200.f32",
+    "SDRBENCH-SCALE_98x1200x1200/QS-98x1200x1200.f32",
+    "SDRBENCH-SCALE_98x1200x1200/QR-98x1200x1200.f32",
+    "SDRBENCH-SCALE_98x1200x1200/",
+    "SDRBENCH-SCALE_98x1200x1200/",
     "JHTDB"
 };
 
@@ -95,6 +113,7 @@ std::vector<float> tols = {
 
 std::vector<long unsigned int> offsetSizes = {
     256,
+    323,
     256*2,
     256*4
 };
@@ -186,14 +205,16 @@ int main(int argc, char *argv[]) {
 
                     float total_time = comptime + decomptime;
                     // Print result.
-                    printf("cuSZp finished!\n");
+                    // printf("cuSZp finished!\n");
                     float comp_ratio = (nbEle*sizeof(float)/1024.0/1024.0)/(cmpSize*sizeof(unsigned char)/1024.0/1024.0);
-                    printf("compression ratios: %f\n\n", comp_ratio);
-                    printf("stats:\n");
-                    float psnr = print_statistics(oriData,decData,nbEle);
-                    //'tol', 'oriSize','compressedsize','psnr','max_error','rmse','comp_ratio','method',"time","data"
-                    printf("%f,%ld,%ld,%f,%f,%f,%f,%s,%f,%s",tol,OriginalSize,cmpSize,psnr,-1.0,-1.0,comp_ratio,"cuSZp",total_time,file_path);
+                    Statistics stats;
+                    stats = print_statistics(oriData,decData,elements);
 
+                    // std::cout << "finish print_statistics" << std::endl;
+                    //'tol', 'oriSize','compressedsize','psnr','max_error','rmse','comp_ratio','method',"time","data"
+                    printf("%f,%d,%d,%f,%f,%f,%f,cuSZp,%f,",tol,OriginalSize,cmpSize,stats.psnr,stats.max_err,stats.rmse,comp_ratio,total_time);
+                    std::cout << file_path << std::endl;
+                    
                 } else {
                     // std::cout << "Non jhtdb" << std::endl;
                     float* oriData = NULL;
@@ -254,10 +275,11 @@ int main(int argc, char *argv[]) {
                     float comp_ratio = (elements*sizeof(float)/1024.0/1024.0)/(cmpSize*sizeof(unsigned char)/1024.0/1024.0);
                     // printf("compression ratios: %f\n\n", comp_ratio);
                     // printf("stats:\n");
-                    float psnr = print_statistics(oriData,decData,elements);
+                    Statistics stats;
+                    stats = print_statistics(oriData,decData,elements);
                     // std::cout << "finish print_statistics" << std::endl;
                     //'tol', 'oriSize','compressedsize','psnr','max_error','rmse','comp_ratio','method',"time","data"
-                    printf("%f,%d,%d,%f,%d,%d,%f,cuSZp,%f,",tol,OriginalSize,cmpSize,psnr,-1,-1,comp_ratio,total_time);
+                    printf("%f,%d,%d,%f,%f,%f,%f,cuSZp,%f,",tol,OriginalSize,cmpSize,stats.psnr,stats.max_err,stats.rmse,comp_ratio,total_time);
                     std::cout << file_path << std::endl;
                     delete[] oriFilePath2;
                     // delete[] oriData;
