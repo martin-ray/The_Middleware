@@ -25,7 +25,7 @@ class spatial_cache:
                 return self.cache[key]
         return None
 
-    def put(self, key, value):     # key = tuple, value = {"data":ndarray,"distance":dist_from_userpoint}
+    def put(self, key, value):
         if (self.capacityInMiB) == 0:
             return
         
@@ -34,10 +34,8 @@ class spatial_cache:
                 pass
             elif self.usedSizeInMiB >= self.capacityInMiB:
                 removedItem = self.cache.popitem(last=False) # returns (key,value).
-                self.usedSizeInMiB -= removedItem[1].nbytes/1024/1024
+                self.usedSizeInMiB -= len(removedItem[1])/1024/1024# 
             self.cache[key] = value
-            print(f"type of a value is {type(value)}")
-            # ここ、valueはバイト列だから、lenじゃないとだめ。なんか、
             self.usedSizeInMiB += len(value)/1024/1024 #value.nbytes/1024/1024
 
     def calHops(self,centerBlockId,targetBlockId):
@@ -45,12 +43,12 @@ class spatial_cache:
         xHops = abs(centerBlockId[2]- targetBlockId[2])
         yHops = abs(centerBlockId[3]- targetBlockId[3])
         zHops = abs(centerBlockId[4]- targetBlockId[4])
-        spaceHops = max(xHops,yHops,zHops)//self.blockOffset # これでホップ数が出る
+        spaceHops = max(xHops,yHops,zHops)//self.blockOffset 
         return timeHops + spaceHops
     
     def evict_a_block(self,key):
         # Iterate through the OrderedDict using a for loop. # value["distance"],value["data"]
-        print("evicting a block")
+        print(f"Cache evicting a block : {key}")
         data = self.cache.pop(key)
         self.usedSizeInMiB -= data.nbytes/1024/1024
 
