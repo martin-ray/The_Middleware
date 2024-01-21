@@ -272,7 +272,7 @@ class L3Prefetcher:
     def cal_move_vector_and_prefetch(self,numSeq=3): # numSeq : ラストnumSeq個のnumSeqから、方向を算出
         
         latest_sequences = self.RequestSequence[-numSeq:] # 中身は、(tol,x,y,z) のtuple
-        if len(latest_sequences <= 2):
+        if len(latest_sequences) <= 2 :
             return # バグ防止
         
         v1 = np.subtract(latest_sequences[2] - latest_sequences[1])
@@ -534,7 +534,7 @@ class L4Prefetcher:
     def cal_move_vector_and_prefetch(self,numSeq=3): # numSeq : ラストnumSeq個のnumSeqから、方向を算出
         
         latest_sequences = self.RequestSequence[-numSeq:] # 中身は、(tol,x,y,z) のtuple
-        if len(latest_sequences <= 2):
+        if len(latest_sequences) <= 2 :
             return # バグ防止
         
         v1 = np.subtract(latest_sequences[2] - latest_sequences[1])
