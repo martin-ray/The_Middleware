@@ -169,20 +169,17 @@ class ClientAPI:
             if L1data is None: # L1 Miss
 
                 print("L1 Miss")
-                self.L1pref.InformL1MissByUser(blockId)
                 L2data = self.L2Cache.get(blockId)
 
                 if L2data is None: # L2 Miss
                     print("L2 Miss")
                     self.numReqTime += 1
-                    # self.L2pref.InformL2MissByUser(blockId) # これも何かするわけではないし、いらないかな。
                     future = self.thread_pool.submit(self.L2MissHandler, blockId, BlockAndData)
                     threads.append(future)
 
                 else: # L2 Hit
                     print("L2 Hit")
                     self.numL2Hit += 1
-                    # self.L2pref.InformL1MissL2HitByUser(blockId) # いらない。なぜなら、上で、どのレイヤーのキャッシュも、ユーザ地点を知っているから
                     future = self.thread_pool.submit(self.L2HitHandler, blockId, BlockAndData)
                     threads.append(future)
 

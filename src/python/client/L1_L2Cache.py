@@ -36,7 +36,7 @@ class spatial_cache:
                 removedItem = self.cache.popitem(last=False) # returns (key,value).
                 self.usedSizeInMiB -= len(removedItem[1])/1024/1024# 
             self.cache[key] = value
-            self.usedSizeInMiB += len(value)/1024/1024 #value.nbytes/1024/1024
+            self.usedSizeInMiB += len(value)/1024/1024 
 
     def calHops(self,centerBlockId,targetBlockId):
         timeHops = abs(centerBlockId[1]-targetBlockId[1])

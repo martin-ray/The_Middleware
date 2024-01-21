@@ -164,7 +164,7 @@ class L2Prefetcher:
         xHops = abs(centerBlockId[2]- targetBlockId[2])
         yHops = abs(centerBlockId[3]- targetBlockId[3])
         zHops = abs(centerBlockId[4]- targetBlockId[4])
-        spaceHops = max(xHops,yHops,zHops)//self.blockOffset # これでホップ数が出る
+        spaceHops = max(xHops,yHops,zHops)//self.blockOffset
         return timeHops + spaceHops
 
     def InformUserPoint(self,blockId):
@@ -258,7 +258,7 @@ class L1Prefetcher:
                 compressed = self.L2Cache.get(nextBlockId)
 
                 if compressed is None: # L2Miss
-                    print("L1pref : try to prefetch from L2 but missed. giving up")
+                    # print("L1pref : try to prefetch from L2 but missed. giving up")
                     self.gonnaPrefetchSet.discard(nextBlockId) # 取りに行けなかったので、ここであきらめる。
 
                 else: # L2Hit
@@ -268,7 +268,7 @@ class L1Prefetcher:
                         original = self.decompressor.decompress(compressed)
                     self.L1Cache.put(nextBlockId,original)   
 
-                self.enque_neighbor_blocks(nextBlockId,distance)
+                # self.enque_neighbor_blocks(nextBlockId,distance)
             else:
                 print(f"L1pref : Stall prefetcing.prefetchQ empty? ={self.prefetch_q_empty()},cache has room ? ={self.L1Cache.usedSizeInMiB < self.L1Cache.capacityInMiB}")
                 await asyncio.sleep(0.2)  
