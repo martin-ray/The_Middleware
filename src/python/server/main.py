@@ -27,10 +27,11 @@ class MyRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.HttpAPI.reInit(blockSize=blockOffset,L3CacheSize=L3Size,L4CacheSize=L4Size,policy=Policy,targetTol= targetTol)
             self.send_response(200)
             self.end_headers()
-            # TODO データの範囲を送信
 
         elif msgType == 'BlockReq':
-            print("Got request from prefetcher")
+
+            # print("Got request from prefetcher")
+            
             tol = float(self.headers.get('tol'))
             timestep = int(self.headers.get('timestep'))
             x = int(self.headers.get('x'))
