@@ -8,7 +8,7 @@ from decompressor import Decompressor
 
 class L2Prefetcher:
 
-    def __init__(self,L2Cache,GPUmutex,maxTimestep=63,serverURL="http://172.20.2.253:8080",OnSwitch=True,targetTol= 0.1) -> None:
+    def __init__(self,L2Cache,GPUmutex,maxTimestep=63,serverURL="http://172.20.2.253:8080",OnSwitch=True,targetTol= 0.1,n_vector_fetch=2) -> None:
         
         self.URL = serverURL
         self.maxTimestep = maxTimestep
@@ -25,6 +25,7 @@ class L2Prefetcher:
         self.thread = None
         self.userPoint = None
         self.radius = 10
+        self.n_vector_fetch = n_vector_fetch
 
         self.targetTol = targetTol
 
@@ -132,7 +133,6 @@ class L2Prefetcher:
         # 時間方向に1つづれたブロックは1ホップ
         for dt in [-1, 1]:
             if (self.gonnaPrefetchSet.__contains__((tol,timestep+dt, x, y, z))): # 先頭に持ってくる
-                self.prefetch_q.remove((tol,timestep+dt, x, y, z))
                 self.prefetch_q.appendleft((tol,timestep+dt, x, y, z))
             elif (timestep+dt < 0) or (timestep+dt >= self.maxTimestep):
                 continue
@@ -144,7 +144,7 @@ class L2Prefetcher:
             for dy in [-self.blockOffset, 0, self.blockOffset]:
                 for dz in [-self.blockOffset, 0, self.blockOffset]:
                     if (self.gonnaPrefetchSet.__contains__((tol,timestep, x+dx, y+dy, z+dz))):
-                        self.prefetch_q.remove((tol,timestep, x+dx, y+dy, z+dz))
+                        # self.prefetch_q.remove((tol,timestep, x+dx, y+dy, z+dz))
                         self.prefetch_q.appendleft((tol,timestep, x+dx, y+dy, z+dz))
 
                     elif ((x + dx < 0) or (x + dx >= self.maxX)
@@ -192,15 +192,16 @@ class L2Prefetcher:
 
     # 方向ベクトルの計算
     def cal_move_vector_and_prefetch(self,numSeq=3,fetch_nums = 5): # numSeq : ラストnumSeq個のnumSeqから、方向を算出
-        print("here in cal_move_vector")
+
         latest_sequences = self.RequestSequence[-numSeq:] # 中身は、(tol,x,y,z) のtuple
         if len(latest_sequences) <= 2 :
             return # バグるので
         
-        v1 = np.subtract(latest_sequences[2] - latest_sequences[1])
-        v0 = np.subtract(latest_sequences[1] - latest_sequences[0])
+        v1 = np.subtract(latest_sequences[2],latest_sequences[1])
+        v0 = np.subtract(latest_sequences[1],latest_sequences[0])
 
-        if (v1 == v0):
+        if (np.array_equal(v1, v0)):
+            # print(f"Vector same :{v1} , {v0}")
             # そっち方向のベクトルをfetch_numsこ、プリフェッチキューの先頭に入れさせていただきます。
             tol = self.targetTol
             timestep = self.userPoint[1]
@@ -208,22 +209,24 @@ class L2Prefetcher:
             y = self.userPoint[3]
             z = self.userPoint[4]
             
-            dt = v1[1]
-            dx = v1[2]
-            dy = v1[3]
-            dz = v1[4]
+            dt = int(v1[1])
+            dx = int(v1[2])
+            dy = int(v1[3])
+            dz = int(v1[4])
 
-            for n in range(fetch_nums):
+            for n in range(self.n_vector_fetch):
                 if self.gonnaPrefetchSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
-                    self.prefetch_q.remove((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
                     self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
                 else:
                     self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
                     self.gonnaPrefetchSet.add((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
+        else:
+            pass
+
 
 class L1Prefetcher:
 
-    def __init__(self,L1Cache,L2Cache,GPUmutex,maxTimestep=9,offsetSize=256,OnSwitch=True, TargetTol= 0.1):
+    def __init__(self,L1Cache,L2Cache,GPUmutex,maxTimestep=9,offsetSize=256,OnSwitch=True, TargetTol= 0.1, n_vector_fetch=2):
 
         self.L1Cache = L1Cache
         self.L2Cache = L2Cache
@@ -253,6 +256,7 @@ class L1Prefetcher:
 
         # ユーザのリクエストシーケンス
         self.RequestSequence = []
+        self.n_vector_fetch = n_vector_fetch
 
         # フェッチループ起動
         if self.L1Cache.capacityInMiB == 0 and OnSwitch == False:
@@ -359,7 +363,7 @@ class L1Prefetcher:
         # 時間方向に1つづれたブロックは1ホップ
         for dt in [-1, 1]:
             if (self.gonnaPrefetchSet.__contains__((tol,timestep+dt, x, y, z))): # 先頭に持ってくる
-                self.prefetch_q.remove((tol,timestep+dt, x, y, z))
+                # self.prefetch_q.remove((tol,timestep+dt, x, y, z))
                 self.prefetch_q.appendleft((tol,timestep+dt, x, y, z))
             elif (timestep+dt < 0) or (timestep+dt >= self.maxTimestep):
                 continue
@@ -371,7 +375,7 @@ class L1Prefetcher:
             for dy in [-self.blockOffset, 0, self.blockOffset]:
                 for dz in [-self.blockOffset, 0, self.blockOffset]:
                     if (self.gonnaPrefetchSet.__contains__((tol,timestep, x+dx, y+dy, z+dz))):
-                        self.prefetch_q.remove((tol,timestep, x+dx, y+dy, z+dz))
+                        # self.prefetch_q.remove((tol,timestep, x+dx, y+dy, z+dz))
                         self.prefetch_q.appendleft((tol,timestep, x+dx, y+dy, z+dz))
 
                     elif ((x + dx < 0) or (x + dx >= self.maxX)
@@ -408,7 +412,7 @@ class L1Prefetcher:
 
     # ユーザの位置が知らされるたびにこれを実行.内容は簡単。
     def updatePrefetchQ(self,userPoint):
-        self.enque_neighbor_blocks_to_front(userPoint,0) # でいんじゃね？って思った。
+        self.enque_neighbor_blocks_to_front(userPoint) # でいんじゃね？って思った。
 
     def calHops(self,centerBlockId,targetBlockId):
         timeHops = abs(centerBlockId[1]-targetBlockId[1])
@@ -430,16 +434,16 @@ class L1Prefetcher:
         return radius
     
     # 方向ベクトルの計算
-    def cal_move_vector_and_prefetch(self,numSeq=3,fetch_nums = 5): # numSeq : ラストnumSeq個のnumSeqから、方向を算出
-        print("here in cal_move_vector")
+    def cal_move_vector_and_prefetch(self,numSeq=3): # numSeq : ラストnumSeq個のnumSeqから、方向を算出
         latest_sequences = self.RequestSequence[-numSeq:] # 中身は、(tol,x,y,z) のtuple
         if len(latest_sequences) <= 2 :
             return # バグるので
         
-        v1 = np.subtract(latest_sequences[2] - latest_sequences[1])
-        v0 = np.subtract(latest_sequences[1] - latest_sequences[0])
+        v1 = np.subtract(latest_sequences[2],latest_sequences[1])
+        v0 = np.subtract(latest_sequences[1],latest_sequences[0])
 
-        if (v1 == v0):
+        if (np.array_equal(v1, v0)):
+            # print(f"Vector same :{v1} , {v0}")
             # そっち方向のベクトルをfetch_numsこ、プリフェッチキューの先頭に入れさせていただきます。
             tol = self.targetTol
             timestep = self.userPoint[1]
@@ -447,19 +451,20 @@ class L1Prefetcher:
             y = self.userPoint[3]
             z = self.userPoint[4]
             
-            dt = v1[1]
-            dx = v1[2]
-            dy = v1[3]
-            dz = v1[4]
+            dt = int(v1[1])
+            dx = int(v1[2])
+            dy = int(v1[3])
+            dz = int(v1[4])
 
-            for n in range(fetch_nums):
+            for n in range(self.n_vector_fetch):
                 if self.gonnaPrefetchSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
-                    self.prefetch_q.remove((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
                     self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
                 else:
                     self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
                     self.gonnaPrefetchSet.add((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
-
+        else:
+            pass
+            # print(f"vector not same :{v1} , {v0}")
 
 
          
