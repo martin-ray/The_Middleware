@@ -1,16 +1,13 @@
 from collections import deque
 import asyncio
 import threading
-
-# from L1_L2Cache import dynamic_cache
+import numpy as np
 from NetInterface import NetIF
 from decompressor import Decompressor
-import time
 
 
 class L2Prefetcher:
 
-    #################### コンストラクタ ####################
     def __init__(self,L2Cache,GPUmutex,maxTimestep=63,serverURL="http://172.20.2.253:8080",OnSwitch=True,targetTol= 0.1) -> None:
         
         self.URL = serverURL
@@ -33,6 +30,9 @@ class L2Prefetcher:
 
         # GPUmutex
         self.GPUmutex = GPUmutex
+
+        # ユーザのリクエストシーケンス
+        self.RequestSequence = []
 
         # フェッチループを起動
         if self.L2Cache.capacityInMiB == 0 and OnSwitch == False:
@@ -61,15 +61,16 @@ class L2Prefetcher:
         self.gonnaPrefetchSet = set()
         self.prefetch_q = deque()
         self.blockOffset = blockOffset
+        self.RequestSequence = []
 
     def changeBlockOffset(self,blockOffset):
         self.blockOffset = blockOffset
 
-    ################# プリフェッチループ系メソッド ##############
+    ### プリフェッチループ系メソッド ###
     async def fetchLoop(self):
         while not self.stop_thread:
             if (not self.prefetch_q_empty()) and (self.L2Cache.usedSizeInMiB < self.L2Cache.capacityInMiB):
-                nextBlockId,d = self.pop_front()
+                nextBlockId = self.prefetch_q.popleft()
                 compressed = self.Netif.send_req_pref(nextBlockId)
                 self.L2Cache.put(nextBlockId,compressed)
                 self.enque_neighbor_blocks(nextBlockId,d) # ここ、あってるかもう一度確認してくれ。頼む。
@@ -83,76 +84,79 @@ class L2Prefetcher:
         asyncio.set_event_loop(loop)
         loop.run_until_complete(self.fetchLoop())          
 
-    def clearQueue(self):
+    def clearQueue(self): # 初期化に使われる
         while not self.prefetch_q_empty():
-            blockId = self.pop_front()
+            blockId = self.prefetch_q.popleft()
             self.gonnaPrefetchSet.discard(blockId)
             self.Netif.sendQ.clear()
 
-    ################## 置換、プリフェッチ系メソッド ############### 
-    def enque_neighbor_blocks(self,centerBlock,d):
-            print(centerBlock)
+    ### 置換、プリフェッチ系メソッド ### 
+    def enque_neighbor_blocks(self,centerBlock): # 緊急を要さないプリフェッチリクエスト
+            
             tol = self.targetTol # centerBlock[0] 
             timestep = centerBlock[1]
             x = centerBlock[2]
             y = centerBlock[3]
             z = centerBlock[4]
-            distance = d + 1
 
             # 時間方向に1つづれたブロックは1ホップ
             for dt in [-1,1]:
-                if (self.gonnaPrefetchSet.__contains__((tol,timestep+dt, x, y, z))
-                            or (timestep+dt < 0) or (timestep+dt >= self.maxTimestep)):
+                if (self.gonnaPrefetchSet.__contains__((tol,timestep + dt, x, y, z))
+                            or (timestep+dt < 0) or (timestep + dt >= self.maxTimestep)):
                     continue
                 else:
-                    self.prefetch_q.append(((tol,timestep+dt, x, y, z),distance))
+                    self.prefetch_q.append((tol,timestep + dt, x, y, z))
                     self.gonnaPrefetchSet.add((tol,timestep+dt, x, y, z))  
 
             for dx in [-self.blockOffset, 0, self.blockOffset]:
                 for dy in [-self.blockOffset, 0, self.blockOffset]:
                     for dz in [-self.blockOffset, 0, self.blockOffset]:
-                        if (self.gonnaPrefetchSet.__contains__((tol,timestep, x+dx, y+dy, z+dz))
-                            or (x+dx < 0) or (x+dx >= self.maxX)
-                            or (y+dy < 0) or (y+dy >= self.maxY)
-                            or (z+dz < 0) or (z+dz >= self.maxZ)):
+                        if (self.gonnaPrefetchSet.__contains__((tol,timestep, x + dx, y + dy, z + dz))
+                            or (x + dx < 0) or (x + dx >= self.maxX)
+                            or (y + dy < 0) or (y + dy >= self.maxY)
+                            or (z + dz < 0) or (z + dz >= self.maxZ)):
                             continue
                         else:
-                            self.prefetch_q.append(((tol,timestep, x+dx, y+dy, z+dz),distance))
-                            self.gonnaPrefetchSet.add((tol,timestep, x+dx, y+dy, z+dz))
+                            self.prefetch_q.append((tol,timestep, x + dx, y + dy, z + dz))
+                            self.gonnaPrefetchSet.add((tol,timestep, x + dx, y + dy, z + dz))
 
 
-    def enque_neighbor_blocks_to_front(self,centerBlock,d):
-        tol = self.targetTol # centerBlock[0] 
+    def enque_neighbor_blocks_to_front(self,centerBlock):
+        
+        tol = self.targetTol 
         timestep = centerBlock[1]
         x = centerBlock[2]
         y = centerBlock[3]
         z = centerBlock[4]
-        distance = d + 1
 
         # 時間方向に1つづれたブロックは1ホップ
-        for dt in [-1,1]:
-            if (self.gonnaPrefetchSet.__contains__((tol,timestep+dt, x, y, z))
-                        or (timestep+dt < 0) or (timestep+dt >= self.maxTimestep)):
+        for dt in [-1, 1]:
+            if (self.gonnaPrefetchSet.__contains__((tol,timestep+dt, x, y, z))): # 先頭に持ってくる
+                self.prefetch_q.remove((tol,timestep+dt, x, y, z))
+                self.prefetch_q.appendleft((tol,timestep+dt, x, y, z))
+            elif (timestep+dt < 0) or (timestep+dt >= self.maxTimestep):
                 continue
             else:
-                self.prefetch_q.appendleft(((tol,timestep+dt, x, y, z),distance))
+                self.prefetch_q.appendleft((tol,timestep+dt, x, y, z))
                 self.gonnaPrefetchSet.add((tol,timestep+dt, x, y, z))  
 
         for dx in [-self.blockOffset, 0, self.blockOffset]:
             for dy in [-self.blockOffset, 0, self.blockOffset]:
                 for dz in [-self.blockOffset, 0, self.blockOffset]:
-                    if (self.gonnaPrefetchSet.__contains__((tol,timestep, x+dx, y+dy, z+dz))
-                        or (x+dx < 0) or (x+dx >= self.maxX)
-                        or (y+dy < 0) or (y+dy >= self.maxY)
-                        or (z+dz < 0) or (z+dz >= self.maxZ)):
+                    if (self.gonnaPrefetchSet.__contains__((tol,timestep, x+dx, y+dy, z+dz))):
+                        self.prefetch_q.remove((tol,timestep, x+dx, y+dy, z+dz))
+                        self.prefetch_q.appendleft((tol,timestep, x+dx, y+dy, z+dz))
+
+                    elif ((x + dx < 0) or (x + dx >= self.maxX)
+                        or (y + dy < 0) or (y + dy >= self.maxY)
+                        or (z + dz < 0) or (z + dz >= self.maxZ)): # 範囲外
                         continue
+
                     else:
-                        self.prefetch_q.appendleft(((tol,timestep, x+dx, y+dy, z+dz),distance))
-                        self.gonnaPrefetchSet.add((tol,timestep, x+dx, y+dy, z+dz))
+                        self.prefetch_q.appendleft((tol, timestep, x + dx, y + dy, z + dz))
+                        self.gonnaPrefetchSet.add((tol,timestep, x + dx, y + dy, z + dz))
                         
-    def pop_front(self):
-        return self.prefetch_q.popleft()
-    
+
     def prefetch_q_empty(self):
         if(len(self.prefetch_q) == 0):
             return True
@@ -168,7 +172,9 @@ class L2Prefetcher:
         return timeHops + spaceHops
 
     def InformUserPoint(self,blockId):
+        self.RequestSequence.append(blockId)
         self.userPoint = blockId
+        self.cal_move_vector_and_prefetch()
         self.update_cache(blockId)
         self.updatePrefetchQ(blockId)
 
@@ -181,12 +187,39 @@ class L2Prefetcher:
 
     # ユーザの位置が知らされるたびにこれを実行.ユーザの位置の周りのブロックをプリフェッチ対象に追加
     def updatePrefetchQ(self,userPoint):
-        self.enque_neighbor_blocks_to_front(userPoint,0) # でいんじゃね？って思った。
+        self.enque_neighbor_blocks_to_front(userPoint) # でいんじゃね？って思った。
 
+
+    # 方向ベクトルの計算
+    def cal_move_vector_and_prefetch(self,numSeq=3,fetch_nums = 5): # numSeq : ラストnumSeq個のnumSeqから、方向を算出
+        
+        latest_sequences = self.RequestSequence[-numSeq:] # 中身は、(tol,x,y,z) のtuple
+        v1 = np.subtract(latest_sequences[2] - latest_sequences[1])
+        v0 = np.subtract(latest_sequences[1] - latest_sequences[0])
+
+        if (v1 == v0):
+            # そっち方向のベクトルをfetch_numsこ、プリフェッチキューの先頭に入れさせていただきます。
+            tol = self.targetTol
+            timestep = self.userPoint[1]
+            x = self.userPoint[2]
+            y = self.userPoint[3]
+            z = self.userPoint[4]
+            
+            dt = v1[1]
+            dx = v1[2]
+            dy = v1[3]
+            dz = v1[4]
+
+            for n in range(fetch_nums):
+                if self.gonnaPrefetchSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
+                    self.prefetch_q.remove((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
+                    self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
+                else:
+                    self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
+                    self.gonnaPrefetchSet.add((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
 
 class L1Prefetcher:
 
-    ################## コンストラクタ ##################
     def __init__(self,L1Cache,L2Cache,GPUmutex,maxTimestep=9,offsetSize=256,OnSwitch=True, TargetTol= 0.1):
 
         self.L1Cache = L1Cache
@@ -215,6 +248,9 @@ class L1Prefetcher:
         # GPUのmutex
         self.GPUmutex = GPUmutex
 
+        # ユーザのリクエストシーケンス
+        self.RequestSequence = []
+
         # フェッチループ起動
         if self.L1Cache.capacityInMiB == 0 and OnSwitch == False:
             pass
@@ -222,7 +258,7 @@ class L1Prefetcher:
             self.thread = threading.Thread(target=self.thread_func)
             self.thread.start()
 
-    ############## 初期化系のメソッド #############
+    ### 初期化系のメソッド ###
 
     def startPrefetching(self):
         self.stop_thread = False
@@ -231,7 +267,7 @@ class L1Prefetcher:
             self.thread.start()
             print("L1pref : Start prefetching")
         else :
-            print("L1pref : L1 cache size is 0. So L1 prefetcher is not starting")
+            print("L1pref : L1 cache size is 0 So L1 prefetcher is not starting")
 
     def stop(self):
         self.stop_thread = True
@@ -241,25 +277,25 @@ class L1Prefetcher:
         self.gonnaPrefetchSet = set()
         self.prefetch_q = deque()
         self.blockOffset = blockOffset
+        self.RequestSequence = []
 
     def clearQueue(self):
         while not self.prefetch_q_empty():
-            blockId = self.pop_front()
+            blockId = self.self.prefetch_q.popleft()
             self.gonnaPrefetchSet.discard(blockId)
 
-    ############# フェッチループ系のメソッド ###########
+    ### フェッチループ系のメソッド ###
     async def fetchLoop(self):
 
         while not self.stop_thread:
 
             if (not self.prefetch_q_empty()) and (self.L1Cache.usedSizeInMiB < self.L1Cache.capacityInMiB):
 
-                nextBlockId,distance = self.pop_front()
+                nextBlockId = self.prefetch_q.popleft()
                 compressed = self.L2Cache.get(nextBlockId)
 
                 if compressed is None: # L2Miss
-                    # print("L1pref : try to prefetch from L2 but missed. giving up")
-                    self.gonnaPrefetchSet.discard(nextBlockId) # 取りに行けなかったので、ここであきらめる。
+                    self.gonnaPrefetchSet.discard(nextBlockId) # 取りに行こうとしたけど、いけなかったので、取りに行く予定リストから出す
 
                 else: # L2Hit
                     print("L1pref : prefetched from L2")
@@ -268,7 +304,6 @@ class L1Prefetcher:
                         original = self.decompressor.decompress(compressed)
                     self.L1Cache.put(nextBlockId,original)   
 
-                # self.enque_neighbor_blocks(nextBlockId,distance)
             else:
                 print(f"L1pref : Stall prefetcing.prefetchQ empty? ={self.prefetch_q_empty()},cache has room ? ={self.L1Cache.usedSizeInMiB < self.L1Cache.capacityInMiB}")
                 await asyncio.sleep(0.2)  
@@ -279,72 +314,75 @@ class L1Prefetcher:
         loop.run_until_complete(self.fetchLoop())       
 
 
-    ############# 更新系メソッド ##############
+    ### 更新系メソッド ###
 
-    def enque_neighbor_blocks(self,centerBlock,d):
-            tol = self.targetTol # centerBlock[0] 
+    def enque_neighbor_blocks(self,centerBlock): # 急を要さないプリフェッチリクエスト
+            
+            tol = self.targetTol  
             timestep = centerBlock[1]
             x = centerBlock[2]
             y = centerBlock[3]
             z = centerBlock[4]
-            distance = d + 1
 
             # 時間方向に1つづれたブロックは1ホップ
             for dt in [-1,1]:
                 if (self.gonnaPrefetchSet.__contains__((tol,timestep+dt, x, y, z))
-                            or (timestep+dt < 0) or (timestep+dt >= self.maxTimestep)):
+                            or (timestep + dt < 0) or (timestep + dt >= self.maxTimestep)):
                     continue
                 else:
-                    self.prefetch_q.append(((tol,timestep+dt, x, y, z),distance))
-                    self.gonnaPrefetchSet.add((tol,timestep+dt, x, y, z))  
+                    self.prefetch_q.append((tol, timestep + dt, x, y, z))
+                    self.gonnaPrefetchSet.add((tol,timestep + dt, x, y, z))  
 
             for dx in [-self.blockOffset, 0, self.blockOffset]:
                 for dy in [-self.blockOffset, 0, self.blockOffset]:
                     for dz in [-self.blockOffset, 0, self.blockOffset]:
-                        if (self.gonnaPrefetchSet.__contains__((tol,timestep, x+dx, y+dy, z+dz))
-                            or (x+dx < 0) or (x+dx >= self.maxX)
-                            or (y+dy < 0) or (y+dy >= self.maxY)
-                            or (z+dz < 0) or (z+dz >= self.maxZ)):
+                        if (self.gonnaPrefetchSet.__contains__((tol,timestep, x + dx, y + dy, z + dz))
+                            or (x + dx < 0) or (x + dx >= self.maxX)
+                            or (y + dy < 0) or (y + dy >= self.maxY)
+                            or (z + dz < 0) or (z + dz >= self.maxZ)):
                             continue
                         else:
-                            self.prefetch_q.append(((tol,timestep, x+dx, y+dy, z+dz),distance))
-                            self.gonnaPrefetchSet.add((tol,timestep, x+dx, y+dy, z+dz))
+                            self.prefetch_q.append((tol,timestep, x + dx, y + dy, z + dz))
+                            self.gonnaPrefetchSet.add((tol,timestep, x + dx, y + dy, z + dz))
 
-    def enque_neighbor_blocks_to_front(self,centerBlock,d): # ここで、すでにgonnaPrefetchsetにはいってるからスルーされると見た。
+    def enque_neighbor_blocks_to_front(self,centerBlock): # ここで、すでにgonnaPrefetchsetにはいってるからスルーされると見た。
 
-        tol = self.targetTol # centerBlock[0] 
+        tol = self.targetTol
         timestep = centerBlock[1]
         x = centerBlock[2]
         y = centerBlock[3]
         z = centerBlock[4]
-        distance = d + 1
 
         # 時間方向に1つづれたブロックは1ホップ
-        for dt in [-1,1]:
-            if (self.gonnaPrefetchSet.__contains__((tol,timestep+dt, x, y, z))
-                        or (timestep+dt < 0) or (timestep+dt >= self.maxTimestep)):
+        for dt in [-1, 1]:
+            if (self.gonnaPrefetchSet.__contains__((tol,timestep+dt, x, y, z))): # 先頭に持ってくる
+                self.prefetch_q.remove((tol,timestep+dt, x, y, z))
+                self.prefetch_q.appendleft((tol,timestep+dt, x, y, z))
+            elif (timestep+dt < 0) or (timestep+dt >= self.maxTimestep):
                 continue
             else:
-                self.prefetch_q.appendleft(((tol,timestep+dt, x, y, z),distance))
+                self.prefetch_q.appendleft((tol,timestep+dt, x, y, z))
                 self.gonnaPrefetchSet.add((tol,timestep+dt, x, y, z))  
 
         for dx in [-self.blockOffset, 0, self.blockOffset]:
             for dy in [-self.blockOffset, 0, self.blockOffset]:
                 for dz in [-self.blockOffset, 0, self.blockOffset]:
-                    if (self.gonnaPrefetchSet.__contains__((tol,timestep, x+dx, y+dy, z+dz))
-                        or (x+dx < 0) or (x+dx >= self.maxX)
-                        or (y+dy < 0) or (y+dy >= self.maxY)
-                        or (z+dz < 0) or (z+dz >= self.maxZ)):
-                        continue
-                    else:
-                        self.prefetch_q.appendleft(((tol,timestep, x+dx, y+dy, z+dz),distance))
-                        self.gonnaPrefetchSet.add((tol,timestep, x+dx, y+dy, z+dz))
-                        
+                    if (self.gonnaPrefetchSet.__contains__((tol,timestep, x+dx, y+dy, z+dz))):
+                        self.prefetch_q.remove((tol,timestep, x+dx, y+dy, z+dz))
+                        self.prefetch_q.appendleft((tol,timestep, x+dx, y+dy, z+dz))
 
-    def pop_front(self):
-        return self.prefetch_q.popleft()
+                    elif ((x + dx < 0) or (x + dx >= self.maxX)
+                        or (y + dy < 0) or (y + dy >= self.maxY)
+                        or (z + dz < 0) or (z + dz >= self.maxZ)): # 範囲外
+                        continue
+
+                    else:
+                        self.prefetch_q.appendleft((tol, timestep, x + dx, y + dy, z + dz))
+                        self.gonnaPrefetchSet.add((tol,timestep, x + dx, y + dy, z + dz))
+                    
     
     def InformUserPoint(self,blockId):
+        self.RequestSequence.append(blockId)
         self.userPoint = blockId
         self.update_cache(blockId)
         self.updatePrefetchQ(blockId)
@@ -368,7 +406,6 @@ class L1Prefetcher:
     def updatePrefetchQ(self,userPoint):
         self.enque_neighbor_blocks_to_front(userPoint,0) # でいんじゃね？って思った。
 
-
     def calHops(self,centerBlockId,targetBlockId):
         timeHops = abs(centerBlockId[1]-targetBlockId[1])
         xHops = abs(centerBlockId[2]- targetBlockId[2])
@@ -388,7 +425,33 @@ class L1Prefetcher:
         print(f"L1 caches radius={radius}")
         return radius
     
+    # 方向ベクトルの計算
+    def cal_move_vector_and_prefetch(self,numSeq=3,fetch_nums = 5): # numSeq : ラストnumSeq個のnumSeqから、方向を算出
+        
+        latest_sequences = self.RequestSequence[-numSeq:] # 中身は、(tol,x,y,z) のtuple
+        v1 = np.subtract(latest_sequences[2] - latest_sequences[1])
+        v0 = np.subtract(latest_sequences[1] - latest_sequences[0])
 
+        if (v1 == v0):
+            # そっち方向のベクトルをfetch_numsこ、プリフェッチキューの先頭に入れさせていただきます。
+            tol = self.targetTol
+            timestep = self.userPoint[1]
+            x = self.userPoint[2]
+            y = self.userPoint[3]
+            z = self.userPoint[4]
+            
+            dt = v1[1]
+            dx = v1[2]
+            dy = v1[3]
+            dz = v1[4]
+
+            for n in range(fetch_nums):
+                if self.gonnaPrefetchSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
+                    self.prefetch_q.remove((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
+                    self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
+                else:
+                    self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
+                    self.gonnaPrefetchSet.add((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
 
 
 
