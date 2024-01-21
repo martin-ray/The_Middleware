@@ -192,9 +192,9 @@ class L2Prefetcher:
 
     # 方向ベクトルの計算
     def cal_move_vector_and_prefetch(self,numSeq=3,fetch_nums = 5): # numSeq : ラストnumSeq個のnumSeqから、方向を算出
-        
+        print("here in cal_move_vector")
         latest_sequences = self.RequestSequence[-numSeq:] # 中身は、(tol,x,y,z) のtuple
-        if len(latest_sequences <= 2):
+        if len(latest_sequences) <= 2 :
             return # バグるので
         
         v1 = np.subtract(latest_sequences[2] - latest_sequences[1])
@@ -431,9 +431,9 @@ class L1Prefetcher:
     
     # 方向ベクトルの計算
     def cal_move_vector_and_prefetch(self,numSeq=3,fetch_nums = 5): # numSeq : ラストnumSeq個のnumSeqから、方向を算出
-        
+        print("here in cal_move_vector")
         latest_sequences = self.RequestSequence[-numSeq:] # 中身は、(tol,x,y,z) のtuple
-        if len(latest_sequences <= 2):
+        if len(latest_sequences) <= 2 :
             return # バグるので
         
         v1 = np.subtract(latest_sequences[2] - latest_sequences[1])
