@@ -70,20 +70,6 @@ class MyRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(compressed)
 
-        elif msgType == 'noCompress':
-            timestep = int(self.headers.get('timestep'))
-            tol = float(self.headers.get('tol'))
-            x = int(self.headers.get('x'))
-            y = int(self.headers.get('y'))
-            z = int(self.headers.get('z'))
-            blockId = (tol,timestep,x,y,z)
-            blockId = self.HttpAPI.adjustBlockId(blockId)
-            original = self.HttpAPI.getOriginal(blockId)
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(original)
-
-
         elif msgType == 'userPoint':
             timestep = int(self.headers.get('timestep'))
             tol = float(self.headers.get('tol'))
@@ -125,7 +111,6 @@ class MyRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(stats_json.encode('utf-8'))
-
 
 
 # Create a threaded HTTP server
