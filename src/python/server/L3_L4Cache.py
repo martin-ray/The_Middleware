@@ -60,7 +60,7 @@ class spatial_cache:
         return timeHops + spaceHops
     
     def evict_a_block(self,key):
-        print("evictiong a block")
+        # print("evictiong a block")
         block = self.cache.pop(key)
         self.usedSizeInMiB -= len(block)/1024/1024
 

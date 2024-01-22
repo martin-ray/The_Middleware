@@ -270,7 +270,7 @@ class L3Prefetcher:
             # print(f"L3pref : {blockId} - {userPoint} = {hops} : radius : {self.radius}")
             
             if hops > self.radius:
-                print(f"L3pref : evicting block : {blockId}")
+                # print(f"L3pref : evicting block : {blockId}")
                 
                 # Add the key to the list of keys to remove
                 keys_to_remove.append(blockId)
