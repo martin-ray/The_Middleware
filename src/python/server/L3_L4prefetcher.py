@@ -281,19 +281,7 @@ class L3Prefetcher:
             self.prefetchedSet.discard(blockId)
             self.gonnaPrefetchSet.discard(blockId)
 
-
-    # def update_cache(self,userPoint): # キャッシュから捨てられるのは、ここしかない
-    #     print("L3pref : in update_cache method....")
-    #     for blockId in self.L3Cache.cache.keys():
-    #         hops = self.calHops(userPoint,blockId)
-    #         print(f"L3pref : {blockId} - {userPoint} = {hops} : radius : {self.radius}")
-    #         if (hops > self.radius) :#and self.L3Cache.isCacheFull():
-    #             print(f"L3pref : evicting block : {blockId}")
-    #             self.L3Cache.evict_a_block(blockId)
-    #             self.prefetchedSet.discard(blockId) # 取ってきたやつからも取り出す。
-    #             self.gonnaPrefetchSet.discard(blockId)
-
-    # ユーザの位置が知らされるたびにこれを実行する。内容は簡単。
+    # ユーザの位置が知らされるたびにこれ、もしくは、vector prefetchを実行
     def updatePrefetchQ(self,userPoint):
         self.enque_neighbor_blocks_to_front(userPoint) # でいんじゃね？って思った。
     
@@ -346,7 +334,7 @@ class L3Prefetcher:
 
                 elif self.prefetchedSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
                     continue # もうとってきていた
-                
+
                 elif self.gonnaPrefetchSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
                     self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
                 else:
@@ -588,7 +576,7 @@ class L4Prefetcher:
         for blockId,blockValue in self.L4Cache.cache.items():
             hops = self.calHops(userPoint,blockId)
             if (hops > self.radius) and self.L4Cache.isCacheFull():
-                print(f"L4pref : evicting a block : {blockId}")
+                # print(f"L4pref : evicting a block : {blockId}")
                 self.L4Cache.evict_a_block(blockId)
                 self.prefetchedSet.discard(blockId)
                 self.gonnaPrefetchSet.discard(blockId)
