@@ -48,7 +48,7 @@ class spatial_cache:
     def evict_a_block(self,key):
         print("evicting a block")
         data = self.cache.pop(key)
-        self.usedSizeInMiB -= len(data.nbytes/1024/1024) # data.nbytes/1024/1024
+        self.usedSizeInMiB -= len(data)/1024/1024 # data.nbytes/1024/1024
 
     def getRadiusFromCapacity(self):
         capacityInMiB = self.capacityInMiB
