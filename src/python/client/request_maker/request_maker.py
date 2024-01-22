@@ -10,12 +10,13 @@ class requestMaker:
         self.maxZ = 1023
         self.targetTol = 0.1
         self.moveDirection = ['timestep','x','y','z']
+        self.random_list = [0, 256, 256*2, 256*3]
 
     def random_xyz(self):
-        return random.randint(0, 1023-self.blockSize)
+        return random.choice(self.random_list)
     
     def random_timestep(self):
-        return random.randint(0,9)
+        return random.randint(0,self.maxTimestep)
     
     def random_choice(self):
         return random.choice([1, -1])
@@ -93,10 +94,11 @@ class requestMaker:
         previousReq = None
         nextReq = None
         firstRequest = (0.1 ,0,0,0,0)
-        # firstRequest = (self.targetTol,0,0,0,0)
+
         requests.append(firstRequest)
         previousRequest = firstRequest
         req_n = 1
+        
         while req_n < length:
             num = self.random_float()
             # print(f"num={num},randomToCont={randomToContRatio},req_n={req_n}")
@@ -156,9 +158,67 @@ class requestMaker:
                 previousRequest = nextReq
                 req_n += 1
         return requests
+    
+    def randAndcontAlongTimeMixRequester(self,length,randomToContRatio=50):
+        
+        requests = []
+        previousReq = None
+        nextReq = None
+        firstRequest = (0.1 ,0,0,0,0)
+
+        requests.append(firstRequest)
+        previousRequest = firstRequest
+        req_n = 1
+        
+        while req_n < length:
+            num = self.random_float()
+            # print(f"num={num},randomToCont={randomToContRatio},req_n={req_n}")
+
+            if num > randomToContRatio:
+                # # continuous
+                # print("continuous")
+                direction = self.random_direction()
+                nexRequest = None
+
+                nexRequest = (previousRequest[0],
+                            previousRequest[1] + 1,
+                            previousRequest[2],
+                            previousRequest[3],
+                            previousRequest[4])
+                
+                    
+                # 範囲を超えていたら整形
+                if nexRequest[1] < 0 or nexRequest[1] > self.maxTimestep:
+                    pass
+                elif nexRequest[2] < 0 or nexRequest[2] > self.maxX - self.blockSize:
+                    pass
+                elif nexRequest[3] < 0 or nexRequest[3] > self.maxY - self.blockSize:
+                    pass
+                elif nexRequest[4] < 0 or nexRequest[4] > self.maxZ - self.blockSize:
+                    pass
+                else :
+                    requests.append(nexRequest) 
+                    req_n += 1  
+                    previousRequest = nexRequest
+
+            else:
+                print("ランダム")
+                nextReq = (self.targetTol,
+                        previousRequest[1],
+                       self.random_xyz(),
+                       self.random_xyz(),
+                       self.random_xyz())
+                requests.append(nextReq) 
+                previousRequest = nextReq
+                req_n += 1
+
+        return requests
 
 if __name__ == "__main__":
-    maker = requestMaker(256,9)
+    maker = requestMaker(256,60)
     requests = maker.continuousRequester(100)
     for req in requests:
         print(req)
+
+    requests = maker.randAndcontAlongTimeMixRequester(60,25)
+    print(requests)
