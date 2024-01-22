@@ -24,10 +24,19 @@ class L2Prefetcher:
         self.stop_thread = False
         self.thread = None
         self.userPoint = None
+        
         self.radius = 10
+        self.estimatedCompratios = {
+            0.1 : 25,
+            0.01 : 13,
+            0.001 : 6,
+            0.0001 : 4,
+            0.00001 : 2
+        }
+        
         self.n_vector_fetch = n_vector_fetch
 
-        self.targetTol = targetTol
+        self.TargetTol = targetTol
 
         # GPUmutex
         self.GPUmutex = GPUmutex
@@ -66,18 +75,32 @@ class L2Prefetcher:
 
     def changeBlockOffset(self,blockOffset):
         self.blockOffset = blockOffset
-
+    
+    def getRadiusFromCapacity(self):
+        capacityInMiB = self.L2Cache.capacityInMiB*self.estimatedCompratios[self.TargetTol] # 実際の容量
+        OneElementSizeInByte = 4
+        blockSizeInByte = OneElementSizeInByte*self.blockOffset**3
+        radius = 0
+        print(f"capacityInMiB = {capacityInMiB},blockSizeInByte={blockSizeInByte}")
+        while((2*radius+1)**3 + 2 <= capacityInMiB*1024*1024/blockSizeInByte):
+            radius += 1
+        print(f"L3 caches radius={radius}")
+        return radius
+    
     ### プリフェッチループ系メソッド ###
     async def fetchLoop(self):
+        
         while not self.stop_thread:
+            
             if (not self.prefetch_q_empty()) and (self.L2Cache.usedSizeInMiB < self.L2Cache.capacityInMiB):
+
                 nextBlockId = self.prefetch_q.popleft()
                 compressed = self.Netif.send_req_pref(nextBlockId)
                 self.L2Cache.put(nextBlockId,compressed)
                 self.enque_neighbor_blocks(nextBlockId) # ここ、あってるかもう一度確認してくれ。頼む。
 
             else:
-                print(f"L1pref : prefetchQ empty? ={self.prefetch_q_empty()},cache has room ? ={self.L2Cache.usedSizeInMiB < self.L2Cache.capacityInMiB}")
+                print(f"L2pref : Stalling. PrefetchQ empty? ={self.prefetch_q_empty()},cache has room ? ={self.L2Cache.usedSizeInMiB < self.L2Cache.capacityInMiB}")
                 await asyncio.sleep(0.1)  # Sleep for 1 second, or adjust as needed
 
     def thread_func(self):
@@ -85,16 +108,11 @@ class L2Prefetcher:
         asyncio.set_event_loop(loop)
         loop.run_until_complete(self.fetchLoop())          
 
-    def clearQueue(self): # 初期化に使われる
-        while not self.prefetch_q_empty():
-            blockId = self.prefetch_q.popleft()
-            self.gonnaPrefetchSet.discard(blockId)
-            self.Netif.sendQ.clear()
 
     ### 置換、プリフェッチ系メソッド ### 
     def enque_neighbor_blocks(self,centerBlock): # 緊急を要さないプリフェッチリクエスト
             
-            tol = self.targetTol # centerBlock[0] 
+            tol = self.TargetTol # centerBlock[0] 
             timestep = centerBlock[1]
             x = centerBlock[2]
             y = centerBlock[3]
@@ -124,7 +142,7 @@ class L2Prefetcher:
 
     def enque_neighbor_blocks_to_front(self,centerBlock):
         
-        tol = self.targetTol 
+        tol = self.TargetTol 
         timestep = centerBlock[1]
         x = centerBlock[2]
         y = centerBlock[3]
@@ -171,19 +189,41 @@ class L2Prefetcher:
         spaceHops = max(xHops,yHops,zHops)//self.blockOffset
         return timeHops + spaceHops
 
+
     def InformUserPoint(self,blockId):
+
+        print(f"L2pref : get informed userpoint : {blockId}")
         self.RequestSequence.append(blockId)
         self.userPoint = blockId
-        self.cal_move_vector_and_prefetch()
-        self.update_cache(blockId)
-        self.updatePrefetchQ(blockId)
+        if(self.cal_move_vector_and_prefetch()):
+            self.update_cache(blockId)
+        else:
+            self.update_cache(blockId)
+            self.updatePrefetchQ(blockId)
 
-    def update_cache(self,userPoint):
+
+    def update_cache(self, userPoint):
+        # print("L2pref : in update_cache method....")
+        
+        # Create a list of keys to iterate over
+        keys_to_remove = []
+        
         for blockId in self.L2Cache.cache.keys():
-            hops = self.calHops(userPoint,blockId)
-            if (hops > self.radius) and self.L2Cache.isCacheFull():
-                self.L2Cache.evict_a_block(blockId)
-                self.prefetchedSet.discard(blockId)
+            hops = self.calHops(userPoint, blockId)
+            # print(f"L3pref : {blockId} - {userPoint} = {hops} : radius : {self.radius}")
+            
+            if hops > self.radius:
+                print(f"L2pref : evicting block : {blockId}")
+                
+                # Add the key to the list of keys to remove
+                keys_to_remove.append(blockId)
+        
+        # Remove the keys from the dictionary and sets
+        for blockId in keys_to_remove:
+            self.L2Cache.evict_a_block(blockId)
+            self.prefetchedSet.discard(blockId)
+            self.gonnaPrefetchSet.discard(blockId)
+
 
     # ユーザの位置が知らされるたびにこれを実行.ユーザの位置の周りのブロックをプリフェッチ対象に追加
     def updatePrefetchQ(self,userPoint):
@@ -191,19 +231,19 @@ class L2Prefetcher:
 
 
     # 方向ベクトルの計算
-    def cal_move_vector_and_prefetch(self,numSeq=3,fetch_nums = 5): # numSeq : ラストnumSeq個のnumSeqから、方向を算出
-
+    def cal_move_vector_and_prefetch(self,numSeq=3): # numSeq : ラストnumSeq個のnumSeqから、方向を算出
+        
         latest_sequences = self.RequestSequence[-numSeq:] # 中身は、(tol,x,y,z) のtuple
         if len(latest_sequences) <= 2 :
-            return # バグるので
+            return # バグ防止
         
+        # print(f"Reqsequence : {self.RequestSequence}")
         v1 = np.subtract(latest_sequences[2],latest_sequences[1])
         v0 = np.subtract(latest_sequences[1],latest_sequences[0])
 
         if (np.array_equal(v1, v0)):
-            # print(f"Vector same :{v1} , {v0}")
             # そっち方向のベクトルをfetch_numsこ、プリフェッチキューの先頭に入れさせていただきます。
-            tol = self.targetTol
+            tol = self.TargetTol
             timestep = self.userPoint[1]
             x = self.userPoint[2]
             y = self.userPoint[3]
@@ -214,14 +254,25 @@ class L2Prefetcher:
             dy = int(v1[3])
             dz = int(v1[4])
 
-            for n in range(self.n_vector_fetch):
-                if self.gonnaPrefetchSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
+            # print(f"v1 : {v1}, v0 : {v0}")
+            # print(f"dt:{dt},dx:{dx},dy:{dy},dz:{dz}")
+
+            for n in range(1,self.n_vector_fetch + 1):
+                # print(f"L2pref : vector prefetch : {(tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)}")
+                
+                if self.prefetchedSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
+                    continue # もうとってきていた
+
+                elif self.gonnaPrefetchSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
                     self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
                 else:
+
                     self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
                     self.gonnaPrefetchSet.add((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
+                
+            return True
         else:
-            pass
+            return False
 
 
 class L1Prefetcher:
@@ -249,7 +300,7 @@ class L1Prefetcher:
 
         self.radius = self.getRadiusFromCapacity()
 
-        self.targetTol = TargetTol
+        self.TargetTol = TargetTol
 
         # GPUのmutex
         self.GPUmutex = GPUmutex
@@ -259,7 +310,7 @@ class L1Prefetcher:
         self.n_vector_fetch = n_vector_fetch
 
         # フェッチループ起動
-        if self.L1Cache.capacityInMiB == 0 and OnSwitch == False:
+        if self.L1Cache.capacityInMiB == 0 :
             pass
         else:
             self.thread = threading.Thread(target=self.thread_func)
@@ -269,7 +320,7 @@ class L1Prefetcher:
 
     def startPrefetching(self):
         self.stop_thread = False
-        if self.L3Cache.capacity > 0:
+        if self.L1Cache.capacity > 0:
             self.thread = threading.Thread(target=self.thread_func)
             self.thread.start()
             print("L1pref : Start prefetching")
@@ -286,10 +337,10 @@ class L1Prefetcher:
         self.blockOffset = blockOffset
         self.RequestSequence = []
 
-    def clearQueue(self):
-        while not self.prefetch_q_empty():
-            blockId = self.self.prefetch_q.popleft()
-            self.gonnaPrefetchSet.discard(blockId)
+    # def clearQueue(self):
+    #     while not self.prefetch_q_empty():
+    #         blockId = self.self.prefetch_q.popleft()
+    #         self.gonnaPrefetchSet.discard(blockId)
 
     ### フェッチループ系のメソッド ###
     async def fetchLoop(self):
@@ -325,7 +376,7 @@ class L1Prefetcher:
 
     def enque_neighbor_blocks(self,centerBlock): # 急を要さないプリフェッチリクエスト
             
-            tol = self.targetTol  
+            tol = self.TargetTol  
             timestep = centerBlock[1]
             x = centerBlock[2]
             y = centerBlock[3]
@@ -354,7 +405,7 @@ class L1Prefetcher:
 
     def enque_neighbor_blocks_to_front(self,centerBlock): # ここで、すでにgonnaPrefetchsetにはいってるからスルーされると見た。
 
-        tol = self.targetTol
+        tol = self.TargetTol
         timestep = centerBlock[1]
         x = centerBlock[2]
         y = centerBlock[3]
@@ -387,32 +438,52 @@ class L1Prefetcher:
                         self.prefetch_q.appendleft((tol, timestep, x + dx, y + dy, z + dz))
                         self.gonnaPrefetchSet.add((tol,timestep, x + dx, y + dy, z + dz))
                     
-    
+    ## キーとなるメソッド
     def InformUserPoint(self,blockId):
+        print(f"L1pref : get informed userpoint : {blockId}")
         self.RequestSequence.append(blockId)
         self.userPoint = blockId
-        self.cal_move_vector_and_prefetch()
-        self.update_cache(blockId)
-        self.updatePrefetchQ(blockId)
+        if(self.cal_move_vector_and_prefetch()):
+            self.update_cache(blockId)
+        else:
+            self.update_cache(blockId)
+            self.updatePrefetchQ(blockId)
+        
     
     def prefetch_q_empty(self):
-        if(len(self.prefetch_q) == 0):
+        if( len(self.prefetch_q) == 0 ):
             return True
         else:
             return False
 
     # キャッシュの要素をひとつづつ見て、半径に収まらない場合は、捨てる
-    def update_cache(self,userPoint):
+    def update_cache(self, userPoint):
+        print("L1pref : in update_cache method....")
+        
+        # Create a list of keys to iterate over
+        keys_to_remove = []
+        
         for blockId in self.L1Cache.cache.keys():
-            hops = self.calHops(userPoint,blockId)
-            if (hops > self.radius) and self.L1Cache.isCacheFull():
-                print(f"L1pref : evicting {blockId}. distance with userPoint {userPoint} is {hops}")
-                self.L1Cache.evict_a_block(blockId)
-                self.prefetchedSet.discard(blockId)
+            hops = self.calHops(userPoint, blockId)
+            # print(f"L1pref : {blockId} - {userPoint} = {hops} : radius : {self.radius}")
+            
+            if hops > self.radius:
+                print(f"L1pref : evicting block : {blockId}")
+                
+                # Add the key to the list of keys to remove
+                keys_to_remove.append(blockId)
+        
+        # Remove the keys from the dictionary and sets
+        for blockId in keys_to_remove:
+            self.L1Cache.evict_a_block(blockId)
+            self.prefetchedSet.discard(blockId)
+            self.gonnaPrefetchSet.discard(blockId)
 
-    # ユーザの位置が知らされるたびにこれを実行.内容は簡単。
+
+    # ユーザの位置が知らされるたびに、これか、vector_prefetchを実行
     def updatePrefetchQ(self,userPoint):
         self.enque_neighbor_blocks_to_front(userPoint) # でいんじゃね？って思った。
+
 
     def calHops(self,centerBlockId,targetBlockId):
         timeHops = abs(centerBlockId[1]-targetBlockId[1])
@@ -435,17 +506,18 @@ class L1Prefetcher:
     
     # 方向ベクトルの計算
     def cal_move_vector_and_prefetch(self,numSeq=3): # numSeq : ラストnumSeq個のnumSeqから、方向を算出
+        
         latest_sequences = self.RequestSequence[-numSeq:] # 中身は、(tol,x,y,z) のtuple
         if len(latest_sequences) <= 2 :
-            return # バグるので
+            return # バグ防止
         
+        # print(f"Reqsequence : {self.RequestSequence}")
         v1 = np.subtract(latest_sequences[2],latest_sequences[1])
         v0 = np.subtract(latest_sequences[1],latest_sequences[0])
 
         if (np.array_equal(v1, v0)):
-            # print(f"Vector same :{v1} , {v0}")
             # そっち方向のベクトルをfetch_numsこ、プリフェッチキューの先頭に入れさせていただきます。
-            tol = self.targetTol
+            tol = self.TargetTol
             timestep = self.userPoint[1]
             x = self.userPoint[2]
             y = self.userPoint[3]
@@ -456,17 +528,25 @@ class L1Prefetcher:
             dy = int(v1[3])
             dz = int(v1[4])
 
-            for n in range(self.n_vector_fetch):
-                if self.gonnaPrefetchSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
+            # print(f"v1 : {v1}, v0 : {v0}")
+            # print(f"dt:{dt},dx:{dx},dy:{dy},dz:{dz}")
+
+            for n in range(1,self.n_vector_fetch + 1):
+                # print(f"L1pref : vector prefetch : {(tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)}")
+                
+                if self.prefetchedSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
+                    continue # もうとってきていた
+
+                elif self.gonnaPrefetchSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
                     self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
                 else:
+
                     self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
                     self.gonnaPrefetchSet.add((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
+                
+            return True
         else:
-            pass
-            # print(f"vector not same :{v1} , {v0}")
-
-
+            return False
          
 
 
