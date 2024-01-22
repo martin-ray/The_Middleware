@@ -37,6 +37,8 @@ class spatial_cache:
                 self.cache[key] = value
                 self.usedSizeInMiB += len(value)/1024/1024
       
+
+
         # if (self.capacityInMiB) == 0:
         #     return
         
@@ -58,27 +60,10 @@ class spatial_cache:
         return timeHops + spaceHops
     
     def evict_a_block(self,key):
-        # print("evicting a block")
         print("evictiong a block")
-        block = self .cache.pop(key)
+        block = self.cache.pop(key)
         self.usedSizeInMiB -= len(block)/1024/1024
 
-
-        # data = self.cache.pop(key)
-        # data = list(data)
-        # size = sys.getsizeof(data)
-        # # print(data)
-        # # self.usedSizeInMiB -= len(data)/1024/1024 # data.nbytes/1024/1024
-        # print(f"size is : {size}")  
-        # self.usedSizeInMiB -= size/1024/1024
-
-    # def getRadiusFromCapacity(self): # 削除予定
-    #     capacityInMiB = self.capacityInMiB
-    #     blockSizeInByte = self.SizeOfFloat*self.blockOffset**3
-    #     print(f"capacityInMiB = {capacityInMiB},blockSizeInByte={blockSizeInByte}")
-    #     while((2*self.radius+1)**3 +2 <= capacityInMiB*1024*1024/blockSizeInByte):
-    #         self.radius += 1
-    #     print(f"L4 caches radius={self.radius}")
 
     def getUsedSize(self):
         return len(self.cache)
@@ -122,30 +107,3 @@ class spatial_cache:
     def isCacheFull(self):
         return self.capacityInMiB <= self.usedSizeInMiB
 
-
-# Example usage and test
-if __name__ == "__main__":
-    cache_capacity = 10
-    lru_cache = spatial_cache(cache_capacity)
-    lru_cache.put("key1", "value1")
-    lru_cache.put("key2", "value2")
-    lru_cache.put("key3", "value3")
-    key1 = (0.2,100,1,1,1)
-    key2 = (0.2,100,1,1,1) # 上と同じ
-    key3 = (0.2,100,1,1,2)
-    data = np.random.random_sample((100, 100, 100))
-    lru_cache.put(key1,data)
-    print(lru_cache.get("key2"))  # Output: "value2"
-
-    
-    lru_cache.put("key4", "value4")  # This will evict "key1" as it's the least recently used
-    lru_cache.put("key5","data")
-    print(lru_cache.get("key1"))  # Output: None, as "key1" was evicted
-    print(lru_cache.get(key1))
-    print(lru_cache.get(key2)) # key2 == key1なのでね。
-    print(lru_cache.get(key3))
-
-    if lru_cache.get("key5") == -1:
-        print("go get to next level cache")
-    else:
-        print("hit!honto?")
