@@ -124,22 +124,24 @@ class HttpAPI:
     # 呼び出し側が、別スレッドで実行
     def getUsr(self,blockId):
         # ユーザが来たので、ほかのリソースはみんないったん止まってくださいってことです。
-        # print("locked the GPU access")
-        start_time = time.time()
+        
+        
+        print(f"HTTPAPI : userReq {blockId}")
+
         tol = blockId[0]
         L3data = self.L3Cache.get(blockId)
         self.numReqs += 1
 
-        # self.L4Pref.InformUserPoint(blockId)
-        # self.L3Pref.InformUserPoint(blockId) 
-        # いらない。なぜなら、必ずmsgType == 'userPoint':が呼び出されるから。無視でOK
 
         if L3data is None:
+            
+            print("L3 Miss")
             L4data = self.L4Cache.get(blockId)
 
             if L4data is None:
-                self.numL3L4Miss += 1
+                print("L4 Hit")
 
+                self.numL3L4Miss += 1
                 self.L4Pref.InformL3MissAndL4Miss(blockId) # これ、先に下に伝えるってところがみそ。
                 self.L3Pref.InformL3MissAndL4Miss(blockId) # ここで知らせることで、2じゅうにフェッチすることを防いでいます。
                 # ここ、L3とL4キャッシュに登録しなくても大丈夫か？まあいいか。
@@ -162,6 +164,7 @@ class HttpAPI:
                 return compressed
             
             else:
+                print("L4 Hit")
                 self.numL4Hit += 1
                 start_compressing_time = time.time()
                 self.userUsingGPU.set_lock()
@@ -177,6 +180,7 @@ class HttpAPI:
                 return compressed
             
         else:
+            print("L3 Hit")
             self.numL3Hit += 1
             # for stats
             self.StorageReadTime.append(0)

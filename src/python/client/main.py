@@ -26,8 +26,6 @@ def getAvrExcludingZero(array):
         return (-1,-1)
         
 
-
-# simTim : 追加してくれ
 def OneExp(tol,L1Size,L2Size,L3Size,L4Size,blockSize,request_sequence,analisisTime=0,networkLatency=0,num_gpus=1):
     reqs = request_sequence
     reqsTiledb = copy.deepcopy(reqs)

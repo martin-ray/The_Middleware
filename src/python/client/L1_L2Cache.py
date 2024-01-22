@@ -36,20 +36,7 @@ class spatial_cache:
             else:
                 self.cache[key] = value
                 self.usedSizeInMiB += len(value)/1024/1024
-      
 
-
-        # if (self.capacityInMiB) == 0:
-        #     return
-        
-        # with self.CacheLock:
-        #     if key in self.cache:
-        #         pass
-        #     elif self.usedSizeInMiB >= self.capacityInMiB:
-        #         removedItem = self.cache.popitem(last=False) # returns (key,value).
-        #         self.usedSizeInMiB -=  len(removedItem[1])/1024/1024# removedItem[1].nbytes/1024/1024
-        #     self.cache[key] = value
-        #     self.usedSizeInMiB += len(value)/1024/1024
 
     def calHops(self,centerBlockId,targetBlockId):
         timeHops = abs(centerBlockId[1]-targetBlockId[1])
@@ -58,9 +45,9 @@ class spatial_cache:
         zHops = abs(centerBlockId[4]- targetBlockId[4])
         spaceHops = max(xHops,yHops,zHops)//self.blockOffset # これでホップ数が出る
         return timeHops + spaceHops
-    
+
+
     def evict_a_block(self,key):
-        print("evictiong a block")
         block = self.cache.pop(key)
         self.usedSizeInMiB -= len(block)/1024/1024
 
