@@ -153,19 +153,19 @@ if __name__ == "__main__":
 
     # L1Sizes = [0,512, 1024, 2048, 4096, 4096*2 ,4096*4]
     L1Sizes = [0,512,512*2,512*4,512*8]
-    L1Sizes = [512,512*2]
+    L1Sizes = [0,512,512*2,512*4]
 
     # L2Sizes = [0,512, 1024, 2048, 4096]
     L2Sizes = [0,512,1024]
-    L2Sizes = [512]
+    L2Sizes = [0,512,1024]
 
     #L3Sizes = [0,512, 1024, 2048, 4096]
     L3Sizes = [0,512,1024]
-    L3Sizes = [512]
+    L3Sizes = [0, 512, 1024]
 
     # L4Sizes = [0,512, 1024, 2048, 4096, 4096*2 ,4096*4]
-    L4Sizes = [0,2048,2048*2,2048*4]
-    L4Sizes = [2048*2]
+    L4Sizes = [0,2048,2048*4]
+    L4Sizes = [0, 2048,2048*2]
     # L4Sizes = [0,2048,2048*2,]
 
     # blockSizes = [64, 128, 256, 512]
@@ -179,11 +179,19 @@ if __name__ == "__main__":
     # randomRatios = np.arange(0,100,25) # 何パーセントランダムか？0の時は、完全に連続。100の時は完全にランダム
     randomRatios = [0]
 
-    anal_time = [0.1, 0.5, 1.0]
-    anal_time = [0.1,0.5]
+    anal_time = [0.5, 1.0]
+
+    access_patterns = [
+        f"./request_maker/request_files/64Reqs/numReqs=64_recycleRatio=25.0_maxdistance=5.0.pkl",
+        "./request_maker/request_files/numReqs=64_recycleRatio=0.0_maxdistance=63.0_accessDensity=1.56_randomJampRatio_0.pkl",
+        "./request_maker/request_files/numReqs=64_recycleRatio=3.12_maxdistance=31.0_accessDensity=51.56_randomJampRatio_20.pkl",
+        "./request_maker/request_files/numReqs=64_recycleRatio=3.12_maxdistance=23.0_accessDensity=64.06_randomJampRatio_40.pkl",
+        "./request_maker/request_files/numReqs=64_recycleRatio=4.69_maxdistance=16.0_accessDensity=75.0_randomJampRatio_60.pkl",
+        "./request_maker/request_files/numReqs=64_recycleRatio=7.81_maxdistance=10.0_accessDensity=84.38_randomJampRatio_80.pkl"
+    ]
 
     header = ['tol','L1Size', 'L2Size', 'L3Size', 'L4Size', 'blkSize',
-               'nReqs', 'reqPatrn', 'nL1Hits', 
+               'nReqs', 'nL1Hits', 
                'nL2Hits', 'nL3Hits', 'nL4Hits','nAllMis',
                'AvrLat','TDbArvLat','rtt',
                'networkAvg','storageAvg','compAvg',
@@ -191,9 +199,8 @@ if __name__ == "__main__":
                'nL3PrefFromStrg',
                'nL4Pref','anlTime',"netLat",
                'q1','q3','median','iqr','lower_bound','upper_bound',"std_dev",
-               "recycleRatio",
-               "maxDist",
-                "num_gpus"] 
+               'reqPatrn'
+               ] 
     
     # Create the file name based on the timestamp
     current_datetime =  datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')  # Adjust the format as needed
@@ -211,23 +218,22 @@ if __name__ == "__main__":
     print("here in front of loop")
     # request sequenceの設定
     maxtimestep=63
+    blockSize = 256
+    recycleRatio = 25
+    maxdistance = 5
     
     for tol in tols:
-        for blockSize in blockSizes:
-            for num_request in num_requests:
-                for randomRatio in randomRatios:
-
-
-                    recycleRatio = 25.0
-                    maxdistance = 5.0
-                    filename = f'./request_maker/request_files/64Reqs/numReqs={num_request}_recycleRatio={recycleRatio}_maxdistance={maxdistance}.pkl'
+        for num_request in num_requests:
+            for randomRatio in randomRatios:
+                for access_pattern in access_patterns:
+                
                     loaded_data = None
-                    
-                    with open(filename, 'rb') as file:
+                    with open(access_pattern, 'rb') as file:
                         loaded_data = pickle.load(file)
                     reqs = loaded_data #reqMaker.randAndcontMixRequester(num_request,randomRatio)
+                    
                     print(reqs)
-                    print(f"loaded:{filename}")
+                    print(f"loaded:{access_pattern}")
                     
                     for L1Size in L1Sizes:
                         for L2Size in L2Sizes:
@@ -244,7 +250,7 @@ if __name__ == "__main__":
 
                                         try:
                                             new_data = [tol,L1Size,L2Size,L3Size,L4Size,blockSize,
-                                                        num_request,"sequential",
+                                                        num_request,
                                                         stats["nL1Hit"],stats["nL2Hit"],
                                                         stats["nL3Hit"],stats["nL4Hit"],
                                                         stats["AllMiss"],
@@ -269,8 +275,8 @@ if __name__ == "__main__":
                                                         round(stats["lower_bound"],round_precision),
                                                         round(stats["upper_bound"],round_precision),
                                                         round(stats["std_dev"],round_precision),
-                                                        recycleRatio,
-                                                        maxdistance]
+                                                        access_pattern
+                                                        ]
                                             
 
                                         except Exception as e:
