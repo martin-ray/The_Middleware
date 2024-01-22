@@ -50,7 +50,7 @@ class spatial_cache:
         # Iterate through the OrderedDict using a for loop. # value["distance"],value["data"]
         print(f"Cache evicting a block : {key}")
         data = self.cache.pop(key)
-        self.usedSizeInMiB -= data.nbytes/1024/1024
+        self.usedSizeInMiB -= len(data)/1024/1024 # data.nbytes/1024/1024
 
     def getRadiusFromCapacity(self):
         capacityInMiB = self.capacityInMiB
