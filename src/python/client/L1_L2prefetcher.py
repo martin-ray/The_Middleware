@@ -24,8 +24,7 @@ class L2Prefetcher:
         self.stop_thread = False
         self.thread = None
         self.userPoint = None
-        
-        self.radius = 10
+        self.TargetTol = targetTol
         self.estimatedCompratios = {
             0.1 : 25,
             0.01 : 13,
@@ -33,10 +32,12 @@ class L2Prefetcher:
             0.0001 : 4,
             0.00001 : 2
         }
+
+        self.radius = self.getRadiusFromCapacity()
         
         self.n_vector_fetch = n_vector_fetch
 
-        self.TargetTol = targetTol
+  
 
         # GPUmutex
         self.GPUmutex = GPUmutex
@@ -262,7 +263,13 @@ class L2Prefetcher:
             for n in range(1,self.n_vector_fetch + 1):
                 # print(f"L2pref : vector prefetch : {(tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)}")
                 
-                if self.prefetchedSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
+                if ((timestep + n*dt < 0 or timestep + n*dt > self.maxTimestep ) or 
+                    (x + n*dx < 0 or x + n*dx > self.maxX) or 
+                    (y + n*dy < 0 or y + n*dy > self.maxY) or 
+                    (z + n*dz < 0 or z + n*dz > self.maxZ)):
+                    continue
+
+                elif self.prefetchedSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
                     continue # もうとってきていた
 
                 elif self.gonnaPrefetchSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
@@ -338,7 +345,7 @@ class L1Prefetcher:
         self.prefetch_q = deque()
         self.blockOffset = blockOffset
         self.RequestSequence = []
-        
+
 
     ### フェッチループ系のメソッド ###
     async def fetchLoop(self):
@@ -532,7 +539,13 @@ class L1Prefetcher:
             for n in range(1,self.n_vector_fetch + 1):
                 # print(f"L1pref : vector prefetch : {(tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)}")
                 
-                if self.prefetchedSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
+                if ((timestep + n*dt < 0 or timestep + n*dt > self.maxTimestep ) or 
+                    (x + n*dx < 0 or x + n*dx > self.maxX) or 
+                    (y + n*dy < 0 or y + n*dy > self.maxY) or 
+                    (z + n*dz < 0 or z + n*dz > self.maxZ)):
+                    continue
+
+                elif self.prefetchedSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
                     continue # もうとってきていた
 
                 elif self.gonnaPrefetchSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):

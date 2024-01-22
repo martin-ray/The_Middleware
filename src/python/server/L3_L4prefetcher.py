@@ -38,8 +38,15 @@ class L3Prefetcher:
         self.thread = None
 
         # tol = 0.1の場合は、大体圧縮率が25倍なので、25倍はいるってことですね。
-        self.estimatedCompratio = 25 # when tol = 0.1の時
-        self.radius = self.getRadiusFromCapacity()
+
+        self.radius = 3 #self.getRadiusFromCapacity()
+        self.estimatedCompratios = {
+            0.1 : 25,
+            0.01 : 13,
+            0.001 : 6,
+            0.0001 : 4,
+            0.00001 : 2
+        }
 
         # スレッドを止めるためのフラグ
         self.stop_thread = False
@@ -84,14 +91,14 @@ class L3Prefetcher:
         self.prefetch_q = deque()
         self.blockOffset = blockOffset
         self.TargetTol = float(targetTol)
-        self.radius = self.getRadiusFromCapacity()*self.estimatedCompratio
+        self.radius = self.getRadiusFromCapacity()
         self.RequestSequence = []
 
     def changeBlockOffset(self,blockOffset):
         self.blockOffset = blockOffset        
 
     def getRadiusFromCapacity(self):
-        capacityInMiB = self.L3Cache.capacityInMiB*self.estimatedCompratio # 実際の容量
+        capacityInMiB = self.L3Cache.capacityInMiB*self.estimatedCompratios[self.TargetTol] # 実際の容量
         OneElementSizeInByte = 4
         blockSizeInByte = OneElementSizeInByte*self.blockOffset**3
         radius = 0
@@ -110,13 +117,18 @@ class L3Prefetcher:
 
             if (not self.prefetch_q_empty()) and (self.L3Cache.usedSizeInMiB < self.L3Cache.capacityInMiB) and (not self.userUsingGPU.is_locked() and (not self.userUsingStorage.is_locked())):
                 
+
+
                 nextBlockId = self.prefetch_q.popleft()
                 distance = self.calHops(self.userPoint,nextBlockId)
+                # print(f"L3pref : Prefetching {nextBlockId}. distance : {distance}")
+
                 if distance > self.radius: 
-                    print("L3pref : The distance between userPoint and going to prefetch block is more than cache radius")
+                    # print("L3pref : The distance between userPoint and going to prefetch block is more than cache radius")
                     continue
 
                 if self.prefetchedSet.__contains__(nextBlockId):
+                    # print(f"L3pref : skipping {nextBlockId}")
                     continue
                     
                 self.numPrefetches += 1
@@ -126,7 +138,7 @@ class L3Prefetcher:
                     try:
                         # L4のプリフェッチ予定から削除
                         self.L4Pref.prefetch_q.remove(nextBlockId)
-                        print("succeed in deleting {} in L4's prefetch Q".format(nextBlockId))
+                        # print("succeed in deleting {} in L4's prefetch Q".format(nextBlockId))
                     except Exception as e:
                         pass
 
@@ -236,21 +248,50 @@ class L3Prefetcher:
         self.prefetchedSet.add(blockId)
 
 
-    def InformUserPoint(self,blockId):
-        self.RequestSequence.append(blockId)
-        self.userPoint = blockId
-        self.cal_move_vector_and_prefetch()
-        self.update_cache(blockId)
-        self.updatePrefetchQ(blockId)
+    def InformUserPoint(self,userPoint):
+        print(f"L3pref : get informed userpoint : {userPoint}")
+        self.RequestSequence.append(userPoint)
+        self.userPoint = userPoint
+        if(self.cal_move_vector_and_prefetch()):
+            self.update_cache(userPoint)
+        else:
+            self.update_cache(userPoint)
+            self.updatePrefetchQ(userPoint)
 
-    def update_cache(self,userPoint): # キャッシュから捨てられるのは、ここしかない
+
+    def update_cache(self, userPoint):
+        print("L3pref : in update_cache method....")
+        
+        # Create a list of keys to iterate over
+        keys_to_remove = []
+        
         for blockId in self.L3Cache.cache.keys():
-            hops = self.calHops(userPoint,blockId)
-            if (hops > self.radius) and self.L3Cache.isCacheFull():
+            hops = self.calHops(userPoint, blockId)
+            # print(f"L3pref : {blockId} - {userPoint} = {hops} : radius : {self.radius}")
+            
+            if hops > self.radius:
                 print(f"L3pref : evicting block : {blockId}")
-                self.L3Cache.evict_a_block(blockId)
-                self.prefetchedSet.discard(blockId) # 取ってきたやつからも取り出す。
-                self.gonnaPrefetchSet.discard(blockId)
+                
+                # Add the key to the list of keys to remove
+                keys_to_remove.append(blockId)
+        
+        # Remove the keys from the dictionary and sets
+        for blockId in keys_to_remove:
+            self.L3Cache.evict_a_block(blockId)
+            self.prefetchedSet.discard(blockId)
+            self.gonnaPrefetchSet.discard(blockId)
+
+
+    # def update_cache(self,userPoint): # キャッシュから捨てられるのは、ここしかない
+    #     print("L3pref : in update_cache method....")
+    #     for blockId in self.L3Cache.cache.keys():
+    #         hops = self.calHops(userPoint,blockId)
+    #         print(f"L3pref : {blockId} - {userPoint} = {hops} : radius : {self.radius}")
+    #         if (hops > self.radius) :#and self.L3Cache.isCacheFull():
+    #             print(f"L3pref : evicting block : {blockId}")
+    #             self.L3Cache.evict_a_block(blockId)
+    #             self.prefetchedSet.discard(blockId) # 取ってきたやつからも取り出す。
+    #             self.gonnaPrefetchSet.discard(blockId)
 
     # ユーザの位置が知らされるたびにこれを実行する。内容は簡単。
     def updatePrefetchQ(self,userPoint):
@@ -274,6 +315,7 @@ class L3Prefetcher:
         if len(latest_sequences) <= 2 :
             return # バグ防止
         
+        # print(f"Reqsequence : {self.RequestSequence}")
         v1 = np.subtract(latest_sequences[2],latest_sequences[1])
         v0 = np.subtract(latest_sequences[1],latest_sequences[0])
 
@@ -290,14 +332,32 @@ class L3Prefetcher:
             dy = int(v1[3])
             dz = int(v1[4])
 
-            for n in range(self.n_vector_fetch):
-                if self.gonnaPrefetchSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
+            # print(f"v1 : {v1}, v0 : {v0}")
+            # print(f"dt:{dt},dx:{dx},dy:{dy},dz:{dz}")
+
+            for n in range(1,self.n_vector_fetch + 1):
+                print(f"L3pref : vector prefetch : {(tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)}")
+                
+                if ((timestep + n*dt < 0 or timestep + n*dt > self.maxTimestep ) or 
+                    (x + n*dx < 0 or x + n*dx > self.maxX) or 
+                    (y + n*dy < 0 or y + n*dy > self.maxY) or 
+                    (z + n*dz < 0 or z + n*dz > self.maxZ)):
+                    continue
+
+                elif self.prefetchedSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
+                    continue # もうとってきていた
+                
+                elif self.gonnaPrefetchSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
                     self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
                 else:
+
                     self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
                     self.gonnaPrefetchSet.add((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
-
-
+                
+            return True
+        else:
+            return False
+        
 class L4Prefetcher:
 
     def __init__(self,L4Cache,dataDim,blockSize,userUsingGPU,userUsingStorage,targetTol = 0.1,n_vector_fetch = 2):
@@ -396,12 +456,16 @@ class L4Prefetcher:
                 if distance > self.radius:
                     continue
 
+                if self.prefetchedSet.__contains__(nextBlockId):
+                    continue
+
                 self.numPrefetches += 1
-                print(nextBlockId)
+                print(f"L4pref: block",nextBlockId)
                 data = self.Slicer.sliceData(nextBlockId)
                 self.L4Cache.put(nextBlockId,data)
                 self.prefetchedSet.add(nextBlockId)
                 self.enque_neighbor_blocks(nextBlockId)
+
             else:
                 # print("L4: Queue empty?={}, Cache full?={}, Storage locked={}".format(
                 #     self.prefetch_q_empty(),
@@ -511,11 +575,14 @@ class L4Prefetcher:
         return timeHops + spaceHops
 
     def InformUserPoint(self,blockId):
+        print(f"L4pref : get informed userpoint : {blockId}")
         self.RequestSequence.append(blockId)
         self.userPoint = blockId
-        self.cal_move_vector_and_prefetch()
-        self.update_cache(blockId)
-        self.updatePrefetchQ(blockId)
+        if(self.cal_move_vector_and_prefetch()):
+            self.update_cache(blockId)
+        else:
+            self.update_cache(blockId)
+            self.updatePrefetchQ(blockId)
 
     def update_cache(self,userPoint):
         for blockId,blockValue in self.L4Cache.cache.items():
@@ -535,7 +602,8 @@ class L4Prefetcher:
         latest_sequences = self.RequestSequence[-numSeq:] # 中身は、(tol,x,y,z) のtuple
         if len(latest_sequences) <= 2 :
             return # バグ防止
-        
+        # print(f"Reqsequence : {self.RequestSequence}")
+
         v1 = np.subtract(latest_sequences[2],latest_sequences[1])
         v0 = np.subtract(latest_sequences[1],latest_sequences[0])
 
@@ -552,9 +620,29 @@ class L4Prefetcher:
             dy = int(v1[3])
             dz = int(v1[4])
 
-            for n in range(self.n_vector_fetch):
-                if self.gonnaPrefetchSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
+            # print(f"v1 : {v1}, v0 : {v0}")
+            # print(f"dt:{dt},dx:{dx},dy:{dy},dz:{dz}")
+
+
+            for n in range(1,self.n_vector_fetch + 1):
+                print(f"L4pref : vector prefetch : {(tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)}")
+                
+                if ((timestep + n*dt < 0 or timestep + n*dt > self.maxTimestep ) or 
+                    (x + n*dx < 0 or x + n*dx > self.maxX) or 
+                    (y + n*dy < 0 or y + n*dy > self.maxY) or 
+                    (z + n*dz < 0 or z + n*dz > self.maxZ)):
+                    continue
+
+                elif self.prefetchedSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
+                    continue # もうとってきていた
+
+                elif self.gonnaPrefetchSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
                     self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
+                    
                 else:
                     self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
                     self.gonnaPrefetchSet.add((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
+                
+            return True
+        else: # vector prefetchをしない
+            return False
