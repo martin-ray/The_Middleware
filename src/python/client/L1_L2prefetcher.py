@@ -76,6 +76,7 @@ class L2Prefetcher:
     def changeBlockOffset(self,blockOffset):
         self.blockOffset = blockOffset
     
+
     def getRadiusFromCapacity(self):
         capacityInMiB = self.L2Cache.capacityInMiB*self.estimatedCompratios[self.TargetTol] # 実際の容量
         OneElementSizeInByte = 4
@@ -87,6 +88,7 @@ class L2Prefetcher:
         print(f"L3 caches radius={radius}")
         return radius
     
+
     ### プリフェッチループ系メソッド ###
     async def fetchLoop(self):
         
@@ -336,11 +338,7 @@ class L1Prefetcher:
         self.prefetch_q = deque()
         self.blockOffset = blockOffset
         self.RequestSequence = []
-
-    # def clearQueue(self):
-    #     while not self.prefetch_q_empty():
-    #         blockId = self.self.prefetch_q.popleft()
-    #         self.gonnaPrefetchSet.discard(blockId)
+        
 
     ### フェッチループ系のメソッド ###
     async def fetchLoop(self):
