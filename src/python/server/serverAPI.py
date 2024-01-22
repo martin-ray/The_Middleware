@@ -130,6 +130,10 @@ class HttpAPI:
         L3data = self.L3Cache.get(blockId)
         self.numReqs += 1
 
+        # self.L4Pref.InformUserPoint(blockId)
+        # self.L3Pref.InformUserPoint(blockId) 
+        # いらない。なぜなら、必ずmsgType == 'userPoint':が呼び出されるから。無視でOK
+
         if L3data is None:
             L4data = self.L4Cache.get(blockId)
 
@@ -138,9 +142,6 @@ class HttpAPI:
 
                 self.L4Pref.InformL3MissAndL4Miss(blockId) # これ、先に下に伝えるってところがみそ。
                 self.L3Pref.InformL3MissAndL4Miss(blockId) # ここで知らせることで、2じゅうにフェッチすることを防いでいます。
-                self.L4Pref.InformUserPoint(blockId)
-                self.L3Pref.InformUserPoint(blockId)
-                
                 # ここ、L3とL4キャッシュに登録しなくても大丈夫か？まあいいか。
                 start_reading_time = time.time()
                 # self.userUsingStorage.set_lock()
@@ -162,14 +163,6 @@ class HttpAPI:
             
             else:
                 self.numL4Hit += 1
-
-                # 上流が先に知っておくのが大事
-                self.L4Pref.InformL3MissAndL4Hit(blockId)
-                self.L3Pref.InformL3MissAndL4Hit(blockId)
-                self.L4Pref.InformUserPoint(blockId)
-                self.L3Pref.InformUserPoint(blockId)
-
-
                 start_compressing_time = time.time()
                 self.userUsingGPU.set_lock()
                 compressed = self.compressor.compress(L4data,tol)
@@ -185,40 +178,28 @@ class HttpAPI:
             
         else:
             self.numL3Hit += 1
-            self.L3Pref.InformL3Hit(blockId)
-            self.L4Pref.InformL3Hit(blockId)
-            self.L4Pref.InformUserPoint(blockId)
-            self.L3Pref.InformUserPoint(blockId)
-
             # for stats
             self.StorageReadTime.append(0)
             self.CompTime.append(0)
             return L3data
         
 
-    # これは、L2やL1からのリクエストポイントですね。上のやつほど緊急度は高くありません。はい。
+    # L2やL1からのリクエストポイント
     def get(self,blockId):
-
-        # print("request from prefetcher")
-        
         tol = blockId[0]
-        
+
         L3data = self.L3Cache.get(blockId)
-        if L3data is None:
+        if L3data is None: # L3 Miss
             L4data = self.L4Cache.get(blockId)
-            if L4data is None:
+            if L4data is None: # L3 Miss
                 self.L4Pref.InformL3MissAndL4Miss(blockId)# プリフェッチポリシーの変更はプリふぇっちゃー側で変更してください
                 self.L3Pref.InformL3MissAndL4Miss(blockId)
                 original = self.Slicer.sliceData(blockId)
                 compressed = self.compressor2.compress(original,tol)
                 return compressed
-            else:
-                self.L4Pref.InformL3MissAndL4Hit(blockId)
-                self.L3Pref.InformL3MissAndL4Hit(blockId)
+            else: # L4 Hit
                 return self.compressor.compress(L4data,tol)
-        else:
-            self.L3Pref.InformL3Hit(blockId)
-            self.L4Pref.InformL3Hit(blockId)
+        else: # L3 Hit
             return L3data
     
     def getOriginal(self,blockId):

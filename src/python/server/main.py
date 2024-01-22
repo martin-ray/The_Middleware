@@ -92,7 +92,6 @@ class MyRequestHandler(http.server.SimpleHTTPRequestHandler):
             z = int(self.headers.get('z'))
             blockId = (tol,timestep,x,y,z)
             self.HttpAPI.informUserPoint(blockId)
-            self.HttpAPI.informUserPoint(blockId)
             self.send_response(200)
             self.end_headers()
 
