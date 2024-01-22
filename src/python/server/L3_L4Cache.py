@@ -1,6 +1,7 @@
 import numpy as np
 import threading
 from collections import OrderedDict
+import sys
 
 class spatial_cache:
     def __init__(self, capacityInMiB, offsetSize=256):
@@ -12,7 +13,7 @@ class spatial_cache:
         self.BlockY = offsetSize
         self.BlockZ = offsetSize
         self.OneBlockSize = offsetSize ** 3 * self.SizeOfFloat
-        self.cache = OrderedDict()  # Use OrderedDict to maintain orderなんの
+        self.cache = {} # OrderedDict()  # Use OrderedDict to maintain orderなんの
         self.CacheLock = threading.Lock()
         self.radius = 0
         self.printInitInfo()
@@ -25,17 +26,28 @@ class spatial_cache:
         return None
 
     def put(self, key, value):     # key = tuple, value = {"data":ndarray,"distance":dist_from_userpoint}
+
         if (self.capacityInMiB) == 0:
             return
         
         with self.CacheLock:
             if key in self.cache:
                 pass
-            elif self.usedSizeInMiB >= self.capacityInMiB:
-                removedItem = self.cache.popitem(last=False) # returns (key,value).
-                self.usedSizeInMiB -=  len(removedItem[1])/1024/1024# removedItem[1].nbytes/1024/1024
-            self.cache[key] = value
-            self.usedSizeInMiB += len(value)/1024/1024
+            else:
+                self.cache[key] = value
+                self.usedSizeInMiB += len(value)/1024/1024
+      
+        # if (self.capacityInMiB) == 0:
+        #     return
+        
+        # with self.CacheLock:
+        #     if key in self.cache:
+        #         pass
+        #     elif self.usedSizeInMiB >= self.capacityInMiB:
+        #         removedItem = self.cache.popitem(last=False) # returns (key,value).
+        #         self.usedSizeInMiB -=  len(removedItem[1])/1024/1024# removedItem[1].nbytes/1024/1024
+        #     self.cache[key] = value
+        #     self.usedSizeInMiB += len(value)/1024/1024
 
     def calHops(self,centerBlockId,targetBlockId):
         timeHops = abs(centerBlockId[1]-targetBlockId[1])
@@ -46,17 +58,27 @@ class spatial_cache:
         return timeHops + spaceHops
     
     def evict_a_block(self,key):
-        print("evicting a block")
-        data = self.cache.pop(key)
-        self.usedSizeInMiB -= len(data)/1024/1024 # data.nbytes/1024/1024
+        # print("evicting a block")
+        print("evictiong a block")
+        block = self .cache.pop(key)
+        self.usedSizeInMiB -= len(block)/1024/1024
 
-    def getRadiusFromCapacity(self):
-        capacityInMiB = self.capacityInMiB
-        blockSizeInByte = self.SizeOfFloat*self.blockOffset**3
-        print(f"capacityInMiB = {capacityInMiB},blockSizeInByte={blockSizeInByte}")
-        while((2*self.radius+1)**3 +2 <= capacityInMiB*1024*1024/blockSizeInByte):
-            self.radius += 1
-        print(f"L4 caches radius={self.radius}")
+
+        # data = self.cache.pop(key)
+        # data = list(data)
+        # size = sys.getsizeof(data)
+        # # print(data)
+        # # self.usedSizeInMiB -= len(data)/1024/1024 # data.nbytes/1024/1024
+        # print(f"size is : {size}")  
+        # self.usedSizeInMiB -= size/1024/1024
+
+    # def getRadiusFromCapacity(self): # 削除予定
+    #     capacityInMiB = self.capacityInMiB
+    #     blockSizeInByte = self.SizeOfFloat*self.blockOffset**3
+    #     print(f"capacityInMiB = {capacityInMiB},blockSizeInByte={blockSizeInByte}")
+    #     while((2*self.radius+1)**3 +2 <= capacityInMiB*1024*1024/blockSizeInByte):
+    #         self.radius += 1
+    #     print(f"L4 caches radius={self.radius}")
 
     def getUsedSize(self):
         return len(self.cache)
