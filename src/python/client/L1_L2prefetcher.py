@@ -33,7 +33,7 @@ class L2Prefetcher:
             0.00001 : 2
         }
 
-        self.radius = self.getRadiusFromCapacity()
+        self.radius = self.getRadiusFromCapacity() + 2
         
         self.n_vector_fetch = n_vector_fetch
 
@@ -97,10 +97,23 @@ class L2Prefetcher:
             
             if (not self.prefetch_q_empty()) and (self.L2Cache.usedSizeInMiB < self.L2Cache.capacityInMiB):
 
+
                 nextBlockId = self.prefetch_q.popleft()
+
+                distance = self.calHops(self.userPoint,nextBlockId)
+
+                if distance > self.radius:
+                    self.gonnaPrefetchSet.discard(nextBlockId)
+                    print(f"L2pref : userPoint - {nextBlockId} = {distance} > {self.radius}")
+                    continue
+
+                if self.prefetchedSet.__contains__(nextBlockId):
+                    continue
+
                 compressed = self.Netif.send_req_pref(nextBlockId)
                 self.L2Cache.put(nextBlockId,compressed)
-                self.enque_neighbor_blocks(nextBlockId) # ここ、あってるかもう一度確認してくれ。頼む。
+                self.prefetchedSet.add(nextBlockId)
+                self.enque_neighbor_blocks(nextBlockId) # これいらない説。というのも、ユーザのリクエストシーケンスから、何をプリフェッチするかは決まる。ここで決めなくても、あっちの方が精度が高いものをプリフェッチできる
 
             else:
                 print(f"L2pref : Stalling. PrefetchQ empty? ={self.prefetch_q_empty()},cache has room ? ={self.L2Cache.usedSizeInMiB < self.L2Cache.capacityInMiB}")
@@ -267,17 +280,20 @@ class L2Prefetcher:
                     (x + n*dx < 0 or x + n*dx > self.maxX) or 
                     (y + n*dy < 0 or y + n*dy > self.maxY) or 
                     (z + n*dz < 0 or z + n*dz > self.maxZ)):
+                    print(f"L2pref : Block {(tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)} out of range")
                     continue
 
                 elif self.prefetchedSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
+                    print(f"L2pref : Block {(tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)} already fatched")
                     continue # もうとってきていた
 
                 elif self.gonnaPrefetchSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
                     self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
+                    print(f"L2pref : Block {(tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)} prioritized 1")
                 else:
-
                     self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
                     self.gonnaPrefetchSet.add((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
+                    print(f"L2pref : Block {(tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)} prioritized 2")
                 
             return True
         else:
@@ -286,7 +302,7 @@ class L2Prefetcher:
 
 class L1Prefetcher:
 
-    def __init__(self,L1Cache,L2Cache,GPUmutex,maxTimestep=9,offsetSize=256,OnSwitch=True, TargetTol= 0.1, n_vector_fetch=2):
+    def __init__(self,L1Cache,L2Cache,GPUmutex,maxTimestep=63,offsetSize=256,OnSwitch=True, TargetTol= 0.1, n_vector_fetch=2):
 
         self.L1Cache = L1Cache
         self.L2Cache = L2Cache
@@ -307,7 +323,7 @@ class L1Prefetcher:
         self.thread = None
         self.userPoint = None
 
-        self.radius = self.getRadiusFromCapacity()
+        self.radius = self.getRadiusFromCapacity() + 2
 
         self.TargetTol = TargetTol
 
@@ -355,18 +371,35 @@ class L1Prefetcher:
             if (not self.prefetch_q_empty()) and (self.L1Cache.usedSizeInMiB < self.L1Cache.capacityInMiB):
 
                 nextBlockId = self.prefetch_q.popleft()
+                
+                distance = self.calHops(self.userPoint,nextBlockId)
+                if distance > self.radius:
+                    self.gonnaPrefetchSet.discard(nextBlockId)
+                    # print(f"L1pref : Userpoint - {nextBlockId} = {distance} > {self.radius}")
+                    continue
+
+                if self.prefetchedSet.__contains__(nextBlockId):
+                    self.gonnaPrefetchSet.discard(nextBlockId)
+                    continue
+
                 compressed = self.L2Cache.get(nextBlockId)
 
+                # print(f"L1pref : Prefetching {nextBlockId}")
                 if compressed is None: # L2Miss
-                    self.gonnaPrefetchSet.discard(nextBlockId) # 取りに行こうとしたけど、いけなかったので、取りに行く予定リストから出す
+                    # print(f"L1pref :  Retry to get {nextBlockId}")
+                    # self.gonnaPrefetchSet.discard(nextBlockId) # 取りに行こうとしたけど、いけなかったので、取りに行く予定リストから出す。ではなく、絶対に取りに行った方がいいので、再チャレンジ。
+                    self.prefetch_q.append(nextBlockId)
+                    await asyncio.sleep(0.1)
 
                 else: # L2Hit
-                    print("L1pref : prefetched from L2")
+                    # print(f"L1pref : prefetched {nextBlockId} from L2")
                     original = None
                     with self.GPUmutex:
                         original = self.decompressor.decompress(compressed)
                     self.L1Cache.put(nextBlockId,original)   
-
+                    self.prefetchedSet.add(nextBlockId)
+                
+                
             else:
                 print(f"L1pref : Stall prefetcing.prefetchQ empty? ={self.prefetch_q_empty()},cache has room ? ={self.L1Cache.usedSizeInMiB < self.L1Cache.capacityInMiB}")
                 await asyncio.sleep(0.2)  
@@ -445,11 +478,12 @@ class L1Prefetcher:
                     
     ## キーとなるメソッド
     def InformUserPoint(self,blockId):
-        print(f"L1pref : get informed userpoint : {blockId}")
+        # print(f"L1pref : get informed userpoint : {blockId}")
         self.RequestSequence.append(blockId)
         self.userPoint = blockId
         if(self.cal_move_vector_and_prefetch()):
             self.update_cache(blockId)
+
         else:
             self.update_cache(blockId)
             self.updatePrefetchQ(blockId)
@@ -463,7 +497,7 @@ class L1Prefetcher:
 
     # キャッシュの要素をひとつづつ見て、半径に収まらない場合は、捨てる
     def update_cache(self, userPoint):
-        print("L1pref : in update_cache method....")
+        # print("L1pref : in update_cache method....")
         
         # Create a list of keys to iterate over
         keys_to_remove = []
@@ -473,7 +507,7 @@ class L1Prefetcher:
             # print(f"L1pref : {blockId} - {userPoint} = {hops} : radius : {self.radius}")
             
             if hops > self.radius:
-                print(f"L1pref : evicting block : {blockId}")
+                # print(f"L1pref : evicting block : {blockId}")
                 
                 # Add the key to the list of keys to remove
                 keys_to_remove.append(blockId)
@@ -536,24 +570,27 @@ class L1Prefetcher:
             # print(f"v1 : {v1}, v0 : {v0}")
             # print(f"dt:{dt},dx:{dx},dy:{dy},dz:{dz}")
 
-            for n in range(1,self.n_vector_fetch + 1):
+            for n in range(1,self.n_vector_fetch + 1): # ここの順番も大事だ
                 # print(f"L1pref : vector prefetch : {(tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)}")
                 
                 if ((timestep + n*dt < 0 or timestep + n*dt > self.maxTimestep ) or 
                     (x + n*dx < 0 or x + n*dx > self.maxX) or 
                     (y + n*dy < 0 or y + n*dy > self.maxY) or 
                     (z + n*dz < 0 or z + n*dz > self.maxZ)):
+                    print(f"L1pref : Block {(tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)} out of range")
                     continue
 
                 elif self.prefetchedSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
+                    print(f"L1pref : Block {(tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)} already fatched")
                     continue # もうとってきていた
 
                 elif self.gonnaPrefetchSet.__contains__((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)):
                     self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
+                    print(f"L1pref : Block {(tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)} prioritized 1")
                 else:
-
                     self.prefetch_q.appendleft((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
                     self.gonnaPrefetchSet.add((tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz))
+                    print(f"L1pref : Block {(tol,timestep + n*dt, x + n*dx, y + n*dy, z + n*dz)} prioritized 2")
                 
             return True
         else:
