@@ -139,7 +139,6 @@ class HttpAPI:
             L4data = self.L4Cache.get(blockId)
 
             if L4data is None:
-                print("L4 Hit")
 
                 self.numL3L4Miss += 1
                 self.L4Pref.InformL3MissAndL4Miss(blockId) # これ、先に下に伝えるってところがみそ。
