@@ -152,19 +152,23 @@ if __name__ == "__main__":
     # L1Sizes = [0,512, 1024, 2048, 4096, 4096*2 ,4096*4]
     L1Sizes = [0,512,512*2,512*4,512*8]
     L1Sizes = [0,512,512*2,512*4]
+    L1Sizes = [0,512]
 
     # L2Sizes = [0,512, 1024, 2048, 4096]
     L2Sizes = [0,512,1024]
     L2Sizes = [0,512,1024]
+    L2Sizes = [0,512]
 
     #L3Sizes = [0,512, 1024, 2048, 4096]
     L3Sizes = [0,512,1024]
     L3Sizes = [0, 512, 1024]
+    L3Sizes = [0,512]
 
     # L4Sizes = [0,512, 1024, 2048, 4096, 4096*2 ,4096*4]
     L4Sizes = [0,2048,2048*4]
     L4Sizes = [0, 2048,2048*2]
     # L4Sizes = [0,2048,2048*2,]
+    L4Sizes = [2048]
 
     # blockSizes = [64, 128, 256, 512]
     
@@ -180,12 +184,12 @@ if __name__ == "__main__":
     anal_time = [0.5, 1.0]
 
     access_patterns = [
-        f"./request_maker/request_files/64Reqs/numReqs=64_recycleRatio=25.0_maxdistance=5.0.pkl",
+        # f"./request_maker/request_files/64Reqs/numReqs=64_recycleRatio=25.0_maxdistance=5.0.pkl",
         "./request_maker/request_files/numReqs=64_recycleRatio=0.0_maxdistance=63.0_accessDensity=1.56_randomJampRatio_0.pkl",
-        "./request_maker/request_files/numReqs=64_recycleRatio=3.12_maxdistance=31.0_accessDensity=51.56_randomJampRatio_20.pkl",
-        "./request_maker/request_files/numReqs=64_recycleRatio=3.12_maxdistance=23.0_accessDensity=64.06_randomJampRatio_40.pkl",
-        "./request_maker/request_files/numReqs=64_recycleRatio=4.69_maxdistance=16.0_accessDensity=75.0_randomJampRatio_60.pkl",
-        "./request_maker/request_files/numReqs=64_recycleRatio=7.81_maxdistance=10.0_accessDensity=84.38_randomJampRatio_80.pkl"
+        "./request_maker/request_files/numReqs=64_recycleRatio=0.0_maxdistance=62.0_accessDensity=3.12_randomJampRatio_5.pkl",
+        "./request_maker/request_files/numReqs=64_recycleRatio=0.0_maxdistance=50.0_accessDensity=21.88_randomJampRatio_10.pkl",
+        "./request_maker/request_files/numReqs=64_recycleRatio=1.56_maxdistance=29.0_accessDensity=54.69_randomJampRatio_25.pkl",
+        "./request_maker/request_files/numReqs=64_recycleRatio=0.0_maxdistance=24.0_accessDensity=62.5_randomJampRatio_50.pkl",
     ]
 
     header = ['tol','L1Size', 'L2Size', 'L3Size', 'L4Size', 'blkSize',
